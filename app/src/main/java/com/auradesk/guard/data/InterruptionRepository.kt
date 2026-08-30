@@ -1,0 +1,183 @@
+package com.auradesk.guard.data
+
+import android.content.ContentValues
+import android.content.Context
+import android.database.sqlite.SQLiteDatabase
+import android.database.sqlite.SQLiteOpenHelper
+import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+class InterruptionRepository private constructor(context: Context) {
+
+    companion object {
+        private const val TAG = "InterruptionRepository"
+        private const val DB_NAME = "auradesk_interruptions.db"
+        private const val DB_VERSION = 1
+        private const val TABLE_NAME = "interruptions"
+
+        @Volatile
+        private var instance: InterruptionRepository? = null
+
+        fun getInstance(context: Context): InterruptionRepository {
+            return instance ?: synchronized(this) {
+                instance ?: InterruptionRepository(context.applicationContext).also { instance = it }
+            }
+        }
+    }
+
+    private val dbHelper = DatabaseHelper(context)
+    private val scope = CoroutineScope(Dispatchers.IO)
+
+    private val _allInterruptions = MutableStateFlow<List<InterruptionEntity>>(emptyList())
+    val allInterruptions: StateFlow<List<InterruptionEntity>> = _allInterruptions.asStateFlow()
+
+    private val _activeCapsule = MutableStateFlow<InterruptionEntity?>(null)
+    val activeCapsule: StateFlow<InterruptionEntity?> = _activeCapsule.asStateFlow()
+
+    init {
+        refreshData()
+    }
+
+    private fun refreshData() {
+        scope.launch {
+            val list = queryAll()
+            _allInterruptions.value = list
+            _activeCapsule.value = list.firstOrNull { it.status == "NEW" }
+        }
+    }
+
+    suspend fun insert(entity: InterruptionEntity): Long = withContext(Dispatchers.IO) {
+        val db = dbHelper.writableDatabase
+        val values = ContentValues().apply {
+            put("person_name", entity.personName)
+            put("task_summary", entity.taskSummary)
+            put("context_snippet", entity.contextSnippet)
+            put("distance_zone", entity.distanceZone)
+            put("duration_sec", entity.durationSec)
+            put("timestamp", entity.timestamp)
+            put("is_urgent", if (entity.isUrgent) 1 else 0)
+            put("status", entity.status)
+        }
+        val id = db.insert(TABLE_NAME, null, values)
+        Log.i(TAG, "Inserted interruption capsule #$id: ${entity.personName} - ${entity.taskSummary}")
+        refreshData()
+        id
+    }
+
+    suspend fun delete(id: Long) = withContext(Dispatchers.IO) {
+        val db = dbHelper.writableDatabase
+        db.delete(TABLE_NAME, "id = ?", arrayOf(id.toString()))
+        Log.i(TAG, "Deleted interruption capsule #$id")
+        refreshData()
+    }
+
+    suspend fun deleteAll() = withContext(Dispatchers.IO) {
+        val db = dbHelper.writableDatabase
+        db.delete(TABLE_NAME, null, null)
+        Log.i(TAG, "Cleared all interruption capsules")
+        refreshData()
+    }
+
+    suspend fun markSavedToNotes(id: Long) = withContext(Dispatchers.IO) {
+        val db = dbHelper.writableDatabase
+        val values = ContentValues().apply {
+            put("status", "SAVED_TO_NOTES")
+        }
+        db.update(TABLE_NAME, values, "id = ?", arrayOf(id.toString()))
+        Log.i(TAG, "Marked interruption capsule #$id as SAVED_TO_NOTES")
+        refreshData()
+    }
+
+    suspend fun dismiss(id: Long) = withContext(Dispatchers.IO) {
+        val db = dbHelper.writableDatabase
+        val values = ContentValues().apply {
+            put("status", "DISMISSED")
+        }
+        db.update(TABLE_NAME, values, "id = ?", arrayOf(id.toString()))
+        Log.i(TAG, "Dismissed interruption capsule #$id")
+        refreshData()
+    }
+
+    suspend fun autoExpireOldEntries(maxAgeHours: Int = 1) = withContext(Dispatchers.IO) {
+        val db = dbHelper.writableDatabase
+        val cutoffTime = System.currentTimeMillis() - (maxAgeHours * 60 * 60 * 1000L)
+        val deletedCount = db.delete(TABLE_NAME, "timestamp < ?", arrayOf(cutoffTime.toString()))
+        if (deletedCount > 0) {
+            Log.i(TAG, "Auto-expired $deletedCount old interruption capsules older than $maxAgeHours hour(s)")
+            refreshData()
+        }
+    }
+
+    private fun queryAll(): List<InterruptionEntity> {
+        val list = mutableListOf<InterruptionEntity>()
+        val db = dbHelper.readableDatabase
+        val cursor = db.query(
+            TABLE_NAME,
+            null,
+            null,
+            null,
+            null,
+            null,
+            "timestamp DESC"
+        )
+        cursor.use { c ->
+            val idIdx = c.getColumnIndexOrThrow("id")
+            val nameIdx = c.getColumnIndexOrThrow("person_name")
+            val taskIdx = c.getColumnIndexOrThrow("task_summary")
+            val ctxIdx = c.getColumnIndexOrThrow("context_snippet")
+            val distIdx = c.getColumnIndexOrThrow("distance_zone")
+            val durIdx = c.getColumnIndexOrThrow("duration_sec")
+            val timeIdx = c.getColumnIndexOrThrow("timestamp")
+            val urgentIdx = c.getColumnIndexOrThrow("is_urgent")
+            val statusIdx = c.getColumnIndexOrThrow("status")
+
+            while (c.moveToNext()) {
+                list.add(
+                    InterruptionEntity(
+                        id = c.getLong(idIdx),
+                        personName = c.getString(nameIdx),
+                        taskSummary = c.getString(taskIdx),
+                        contextSnippet = c.getString(ctxIdx),
+                        distanceZone = c.getString(distIdx),
+                        durationSec = c.getLong(durIdx),
+                        timestamp = c.getLong(timeIdx),
+                        isUrgent = c.getInt(urgentIdx) == 1,
+                        status = c.getString(statusIdx)
+                    )
+                )
+            }
+        }
+        return list
+    }
+
+    private class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VERSION) {
+        override fun onCreate(db: SQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS $TABLE_NAME (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    person_name TEXT NOT NULL,
+                    task_summary TEXT NOT NULL,
+                    context_snippet TEXT NOT NULL,
+                    distance_zone TEXT NOT NULL,
+                    duration_sec INTEGER NOT NULL,
+                    timestamp INTEGER NOT NULL,
+                    is_urgent INTEGER NOT NULL,
+                    status TEXT NOT NULL
+                )
+                """.trimIndent()
+            )
+        }
+
+        override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+            db.execSQL("DROP TABLE IF EXISTS $TABLE_NAME")
+            onCreate(db)
+        }
+    }
+}

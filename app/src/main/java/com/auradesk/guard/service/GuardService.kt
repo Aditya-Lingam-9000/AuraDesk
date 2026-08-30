@@ -1,0 +1,319 @@
+package com.auradesk.guard.service
+
+import android.app.Notification
+import android.app.PendingIntent
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.os.Build
+import android.os.IBinder
+import android.util.Log
+import androidx.core.app.NotificationCompat
+import com.auradesk.guard.AuraDeskApp
+import com.auradesk.guard.MainActivity
+import com.auradesk.guard.R
+import com.auradesk.guard.sensors.FaceDownDetector
+import com.auradesk.guard.sensors.FaceDownSensors
+import com.auradesk.guard.utils.FeedbackManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+
+class GuardService : Service() {
+
+    companion object {
+        private const val TAG = "GuardService"
+        const val NOTIFICATION_ID = 1001
+        const val ACTION_START = "ACTION_START_GUARD"
+        const val ACTION_STOP = "ACTION_STOP_GUARD"
+
+        private val _isRunning = MutableStateFlow(false)
+        val isRunning: StateFlow<Boolean> = _isRunning.asStateFlow()
+
+        private val _isArmed = MutableStateFlow(false)
+        val isArmed: StateFlow<Boolean> = _isArmed.asStateFlow()
+
+        private val _liveSensors = MutableStateFlow(FaceDownSensors())
+        val liveSensors: StateFlow<FaceDownSensors> = _liveSensors.asStateFlow()
+
+        val radarDetector = com.auradesk.guard.vision.PersonRadarDetector()
+        val liveRadar: StateFlow<com.auradesk.guard.vision.PersonRadarData> = radarDetector.radarData
+
+        private val _liveDeepWork = MutableStateFlow(com.auradesk.guard.focus.DeepWorkState())
+        val liveDeepWork: StateFlow<com.auradesk.guard.focus.DeepWorkState> = _liveDeepWork.asStateFlow()
+
+        private var deepWorkDetectorInstance: com.auradesk.guard.focus.DeepWorkDetector? = null
+
+        fun simulateRadar(distance: Float, isApproaching: Boolean, growthRate: Float = 28.5f) {
+            radarDetector.simulate(distance, isApproaching, growthRate)
+        }
+
+        fun clearRadar() {
+            radarDetector.clear()
+        }
+
+        fun simulateDeepWork(
+            isDeepWork: Boolean,
+            score: Int,
+            cadenceBpm: Float,
+            profile: com.auradesk.guard.focus.EnvironmentProfile = com.auradesk.guard.focus.EnvironmentProfile.QUIET_LAPTOP
+        ) {
+            deepWorkDetectorInstance?.simulate(isDeepWork, score, cadenceBpm, profile)
+                ?: run {
+                    _liveDeepWork.value = com.auradesk.guard.focus.DeepWorkState(
+                        isDeepWork = isDeepWork,
+                        focusScore = score,
+                        typingCadenceBpm = cadenceBpm,
+                        acousticEnergyLevel = if (isDeepWork) 0.65f else 0.05f,
+                        focusStateLabel = if (isDeepWork) "⚡ Deep Work Active • Focus Protected" else "💤 Idle / Ambient Desk",
+                        environmentProfile = profile,
+                        isAudioListening = true
+                    )
+                }
+        }
+
+        fun setEnvironmentProfile(profile: com.auradesk.guard.focus.EnvironmentProfile) {
+            deepWorkDetectorInstance?.setEnvironmentProfile(profile)
+        }
+
+        fun startService(context: Context) {
+            val intent = Intent(context, GuardService::class.java).apply {
+                action = ACTION_START
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        fun stopService(context: Context) {
+            val intent = Intent(context, GuardService::class.java).apply {
+                action = ACTION_STOP
+            }
+            context.startService(intent)
+        }
+    }
+
+    private lateinit var faceDownDetector: FaceDownDetector
+    private lateinit var deepWorkDetector: com.auradesk.guard.focus.DeepWorkDetector
+    private lateinit var feedbackManager: FeedbackManager
+    private lateinit var repository: com.auradesk.guard.data.InterruptionRepository
+    private val serviceScope = CoroutineScope(Dispatchers.Main + Job())
+    private var sensorCollectJob: Job? = null
+    private var stateCollectJob: Job? = null
+    private var deepWorkCollectJob: Job? = null
+    private var radarCollectJob: Job? = null
+    private var lastArmedState = false
+
+    // Real-time visit tracking state
+    private var visitStartTime: Long = 0L
+    private var lastZoneVibrated: com.auradesk.guard.vision.RadarZone = com.auradesk.guard.vision.RadarZone.NONE
+    private var lastVibrationTime: Long = 0L
+    private var closestZoneInVisit: com.auradesk.guard.vision.RadarZone = com.auradesk.guard.vision.RadarZone.NONE
+
+    override fun onCreate() {
+        super.onCreate()
+        Log.i(TAG, "GuardService onCreate")
+        faceDownDetector = FaceDownDetector(this)
+        feedbackManager = FeedbackManager(this)
+        deepWorkDetector = com.auradesk.guard.focus.DeepWorkDetector(this)
+        deepWorkDetectorInstance = deepWorkDetector
+        repository = com.auradesk.guard.data.InterruptionRepository.getInstance(this)
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            ACTION_START -> {
+                startGuard()
+            }
+            ACTION_STOP -> {
+                stopGuard()
+                stopSelf()
+            }
+        }
+        return START_STICKY
+    }
+
+    private fun startGuard() {
+        if (_isRunning.value) return
+        _isRunning.value = true
+        Log.i(TAG, "GuardService started in foreground")
+
+        val notification = createNotification("AuraDesk Guard Ready", "Place phone face-down to arm guard")
+        
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val serviceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                startForeground(NOTIFICATION_ID, notification, serviceType)
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Foreground service start error, falling back to standard startForeground", e)
+            try {
+                startForeground(NOTIFICATION_ID, notification)
+            } catch (e2: Exception) {
+                Log.e(TAG, "Fatal startForeground fallback error", e2)
+            }
+        }
+
+        faceDownDetector.startListening()
+
+        sensorCollectJob?.cancel()
+        sensorCollectJob = serviceScope.launch {
+            faceDownDetector.sensorState.collect { sensors ->
+                _liveSensors.value = sensors
+            }
+        }
+
+        deepWorkCollectJob?.cancel()
+        deepWorkCollectJob = serviceScope.launch {
+            deepWorkDetector.deepWorkState.collect { focusState ->
+                _liveDeepWork.value = focusState
+            }
+        }
+
+        // Real-Time Radar Haptic Whisper & Auto-Capsule Bridge
+        radarCollectJob?.cancel()
+        radarCollectJob = serviceScope.launch {
+            liveRadar.collect { radar ->
+                val now = System.currentTimeMillis()
+                if (radar.isPersonDetected) {
+                    if (visitStartTime == 0L) {
+                        visitStartTime = now
+                        closestZoneInVisit = radar.zone
+                        Log.i(TAG, "Real-time visit started in zone: ${radar.zone.label}")
+                    }
+
+                    if (radar.zone == com.auradesk.guard.vision.RadarZone.CLOSE_05M) {
+                        closestZoneInVisit = com.auradesk.guard.vision.RadarZone.CLOSE_05M
+                        if (lastZoneVibrated != com.auradesk.guard.vision.RadarZone.CLOSE_05M || now - lastVibrationTime > 4000L) {
+                            Log.i(TAG, "🚨 Triggering Real-Time Urgent Haptic Whisper (0.5m)")
+                            feedbackManager.playHapticWhisperUrgent()
+                            lastZoneVibrated = com.auradesk.guard.vision.RadarZone.CLOSE_05M
+                            lastVibrationTime = now
+                        }
+                    } else if (radar.zone == com.auradesk.guard.vision.RadarZone.MID_2M && radar.isApproaching) {
+                        if (closestZoneInVisit != com.auradesk.guard.vision.RadarZone.CLOSE_05M) {
+                            closestZoneInVisit = com.auradesk.guard.vision.RadarZone.MID_2M
+                        }
+                        if (lastZoneVibrated == com.auradesk.guard.vision.RadarZone.NONE || now - lastVibrationTime > 5000L) {
+                            Log.i(TAG, "🔔 Triggering Real-Time Medium Haptic Whisper (2.0m approaching)")
+                            feedbackManager.playHapticWhisperMedium()
+                            lastZoneVibrated = com.auradesk.guard.vision.RadarZone.MID_2M
+                            lastVibrationTime = now
+                        }
+                    }
+                } else if (visitStartTime > 0L) {
+                    // Person has just walked away from desk
+                    val durationSec = kotlin.math.max(1L, (now - visitStartTime) / 1000L)
+                    Log.i(TAG, "Real-time visit ended: duration=${durationSec}s, closestZone=${closestZoneInVisit.label}")
+
+                    if (durationSec >= 2L) {
+                        val distanceStr = if (closestZoneInVisit == com.auradesk.guard.vision.RadarZone.CLOSE_05M) "0.5m (At Desk)" else "2.0m (Approached)"
+                        val taskDesc = if (closestZoneInVisit == com.auradesk.guard.vision.RadarZone.CLOSE_05M) {
+                            "Visitor arrived at desk for ${durationSec}s during focus session"
+                        } else {
+                            "Subject approached desk perimeter for ${durationSec}s"
+                        }
+
+                        serviceScope.launch(Dispatchers.IO) {
+                            repository.insert(
+                                com.auradesk.guard.data.InterruptionEntity(
+                                    personName = "Desk Visitor",
+                                    taskSummary = taskDesc,
+                                    contextSnippet = "Editing main.py at line 124",
+                                    distanceZone = distanceStr,
+                                    durationSec = durationSec,
+                                    isUrgent = closestZoneInVisit == com.auradesk.guard.vision.RadarZone.CLOSE_05M
+                                )
+                            )
+                        }
+                    }
+
+                    visitStartTime = 0L
+                    lastZoneVibrated = com.auradesk.guard.vision.RadarZone.NONE
+                    closestZoneInVisit = com.auradesk.guard.vision.RadarZone.NONE
+                }
+            }
+        }
+
+        stateCollectJob?.cancel()
+        stateCollectJob = serviceScope.launch {
+            faceDownDetector.isFaceDown.collect { faceDown ->
+                if (faceDown != lastArmedState) {
+                    if (faceDown) {
+                        Log.i(TAG, "Triggering Arm Audio/Haptic Feedback")
+                        feedbackManager.playArmFeedback()
+                        deepWorkDetector.startListening()
+                    } else if (lastArmedState) {
+                        Log.i(TAG, "Triggering Disarm Audio/Haptic Feedback")
+                        feedbackManager.playDisarmFeedback()
+                        deepWorkDetector.stopListening()
+                    }
+                    lastArmedState = faceDown
+                }
+
+                _isArmed.value = faceDown
+                val title = if (faceDown) "🛡️ AuraDesk Guard Armed" else "AuraDesk Guard Standby"
+                val text = if (faceDown) "Focus Shield Active • Battery <3%/hr" else "Flip phone face-down to protect focus"
+                updateNotification(title, text)
+            }
+        }
+    }
+
+    private fun stopGuard() {
+        _isRunning.value = false
+        _isArmed.value = false
+        lastArmedState = false
+        faceDownDetector.stopListening()
+        deepWorkDetector.stopListening()
+        deepWorkDetectorInstance = null
+        sensorCollectJob?.cancel()
+        stateCollectJob?.cancel()
+        deepWorkCollectJob?.cancel()
+        radarCollectJob?.cancel()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        Log.i(TAG, "GuardService stopped")
+    }
+
+    private fun createNotification(title: String, text: String): Notification {
+        val openAppIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            0,
+            openAppIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        return NotificationCompat.Builder(this, AuraDeskApp.CHANNEL_GUARD_SERVICE)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)
+            .setContentIntent(pendingIntent)
+            .build()
+    }
+
+    private fun updateNotification(title: String, text: String) {
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager
+        notificationManager?.notify(NOTIFICATION_ID, createNotification(title, text))
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onDestroy() {
+        super.onDestroy()
+        stopGuard()
+        feedbackManager.release()
+    }
+}
