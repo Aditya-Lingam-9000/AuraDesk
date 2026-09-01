@@ -57,7 +57,6 @@ fun DashboardScreen(
 
     var selectedTab by remember { mutableStateOf(DashboardTab.FOCUS) }
     var showAodPreview by remember { mutableStateOf(false) }
-    val coroutineScope = rememberCoroutineScope()
 
     // Back Navigation Handler
     BackHandler(enabled = selectedTab != DashboardTab.FOCUS || showAodPreview) {
@@ -111,7 +110,7 @@ fun DashboardScreen(
                             color = TextPrimary
                         )
                         Text(
-                            text = if (isArmed) "Focus Shield Armed" else if (isRunning) "Service Running (Ready)" else "Standby (Inactive)",
+                            text = if (isArmed) "Focus Shield Armed" else if (isRunning) "Service Ready" else "Standby",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Medium,
                             color = if (isArmed) AccentGreen else TextMuted
@@ -191,15 +190,15 @@ fun DashboardScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
+                        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                             Text(
-                                text = "Camera & Audio Access Needed",
+                                text = "Camera & Audio Permissions Needed",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = TextPrimary
                             )
                             Text(
-                                text = "Required for optical desk guard and voice notes",
+                                text = "Required for desk guard and voice notes",
                                 fontSize = 12.sp,
                                 color = TextSecondary
                             )
@@ -269,7 +268,7 @@ fun DashboardScreen(
 }
 
 // -------------------------------------------------------------
-// POLISHED HIGH-CONTRAST UI CARDS (Zero Emojis, Clean Typography)
+// POLISHED HIGH-CONTRAST UI CARDS
 // -------------------------------------------------------------
 
 @Composable
@@ -291,7 +290,7 @@ fun FocusServiceCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
                     Text(
                         text = if (isArmed) "Focus Shield Armed" else if (isRunning) "Focus Guard Ready" else "Focus Guard Inactive",
                         fontWeight = FontWeight.Bold,
@@ -300,8 +299,8 @@ fun FocusServiceCard(
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = if (isArmed) "Device face-down on desk • Monitoring active" else "Flip device face-down on your desk to arm",
-                        fontSize = 13.sp,
+                        text = if (isArmed) "Device face-down on desk • Monitoring active" else "Flip device face-down on desk to arm",
+                        fontSize = 12.sp,
                         color = TextSecondary
                     )
                 }
@@ -316,6 +315,8 @@ fun FocusServiceCard(
                         color = if (isArmed) AccentGreen else TextPrimary,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        softWrap = false,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
@@ -328,11 +329,11 @@ fun FocusServiceCard(
                     onClick = onToggleService,
                     colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
                     shape = RoundedCornerShape(6.dp),
-                    modifier = Modifier.weight(1.5f),
+                    modifier = Modifier.weight(1.4f),
                     contentPadding = PaddingValues(vertical = 12.dp)
                 ) {
                     Text(
-                        text = if (isRunning) "Stop Guard Service" else "Start Guard Service",
+                        text = if (isRunning) "Stop Guard" else "Start Guard",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = PureWhite
@@ -374,7 +375,7 @@ fun DeepWorkCadenceCard() {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
                     Text(
                         text = "Deep Work Focus Index",
                         fontWeight = FontWeight.Bold,
@@ -382,7 +383,7 @@ fun DeepWorkCadenceCard() {
                         color = TextPrimary
                     )
                     Text(
-                        text = "Acoustic keyboard cadence and quiet study detector",
+                        text = "Keyboard cadence & quiet study detector",
                         fontSize = 12.sp,
                         color = TextSecondary
                     )
@@ -398,6 +399,8 @@ fun DeepWorkCadenceCard() {
                         color = if (deepWorkState.isDeepWork) AccentGreen else TextPrimary,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        softWrap = false,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
@@ -426,7 +429,7 @@ fun DeepWorkCadenceCard() {
                     modifier = Modifier.weight(1f)
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
-                        Text("Environment Profile", fontSize = 12.sp, color = TextMuted)
+                        Text("Environment Mode", fontSize = 12.sp, color = TextMuted)
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(deepWorkState.environmentProfile.label, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                     }
@@ -472,7 +475,7 @@ fun SensorTelemetryCard(sensors: FaceDownSensors, isRunning: Boolean) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
                     Text("Sensor Fusion State", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextPrimary)
                     Text("Optical occlusion and gravity alignment", fontSize = 12.sp, color = TextSecondary)
                 }
@@ -546,9 +549,9 @@ fun SystemStatusBadgeCard(context: Context) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Text("Power Consumption", fontSize = 12.sp, color = TextMuted)
-                Text("${telemetry.batteryPercent}% • ${telemetry.estimatedDrainPerHour}%/hr", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text("${telemetry.batteryPercent}% • ${telemetry.estimatedDrainPerHour}%/hr", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
             }
 
             Column(horizontalAlignment = Alignment.End) {
@@ -571,14 +574,24 @@ fun PerimeterRadarCard() {
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
+            // Header Row with robust spacing
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
-                    Text("Perimeter Vision Radar", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextPrimary)
-                    Text("Tracks visitor proximity from 5m down to 0.5m desk arrival", fontSize = 12.sp, color = TextSecondary)
+                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                    Text(
+                        text = "Perimeter Vision Radar",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = TextPrimary
+                    )
+                    Text(
+                        text = "Real-time 5m to 0.5m desk proximity tracking",
+                        fontSize = 12.sp,
+                        color = TextSecondary
+                    )
                 }
 
                 Surface(
@@ -591,6 +604,8 @@ fun PerimeterRadarCard() {
                         color = if (radar.isPersonDetected) AccentGreen else TextPrimary,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        softWrap = false,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
@@ -598,7 +613,7 @@ fun PerimeterRadarCard() {
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Large Crisp Metric Box
+            // Metric Box
             Surface(
                 shape = RoundedCornerShape(6.dp),
                 color = AppBg,
@@ -610,7 +625,7 @@ fun PerimeterRadarCard() {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text("Current Zone", fontSize = 12.sp, color = TextMuted)
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(radar.zone.label, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
@@ -643,7 +658,7 @@ fun PerimeterRadarCard() {
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Perfectly Aligned Simulation Actions
+            // Balanced Symmetrical Simulation Buttons
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(
                     onClick = { GuardService.simulateRadar(2.0f, true, 30.0f) },
@@ -665,7 +680,7 @@ fun PerimeterRadarCard() {
 
                 OutlinedButton(
                     onClick = { GuardService.clearRadar() },
-                    modifier = Modifier.weight(0.7f),
+                    modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(6.dp),
                     border = BorderStroke(1.dp, BorderStrong)
                 ) {
@@ -704,7 +719,7 @@ fun HapticFeedbackCard(context: Context) {
 
                 OutlinedButton(
                     onClick = { feedbackManager.playHapticWhisperMedium() },
-                    modifier = Modifier.weight(1.1f),
+                    modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(6.dp),
                     border = BorderStroke(1.dp, BorderStrong)
                 ) {
@@ -713,7 +728,7 @@ fun HapticFeedbackCard(context: Context) {
 
                 OutlinedButton(
                     onClick = { feedbackManager.playHapticWhisperUrgent() },
-                    modifier = Modifier.weight(1.1f),
+                    modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(6.dp),
                     border = BorderStroke(1.dp, AccentRedBorder)
                 ) {
@@ -741,9 +756,9 @@ fun VoiceCaptureSynthesizerCard(context: Context) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
                     Text("Voice VAD & Action Synthesizer", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextPrimary)
-                    Text("10-second offline audio capsule with on-device action extraction", fontSize = 12.sp, color = TextSecondary)
+                    Text("10s offline audio capsule with on-device action extraction", fontSize = 12.sp, color = TextSecondary)
                 }
 
                 Surface(
@@ -756,6 +771,8 @@ fun VoiceCaptureSynthesizerCard(context: Context) {
                         color = if (audioState.isRecording) AccentRed else TextPrimary,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        softWrap = false,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
@@ -833,7 +850,7 @@ fun VoiceCaptureSynthesizerCard(context: Context) {
                             isUrgent = true
                         )
                     },
-                    modifier = Modifier.weight(1.2f),
+                    modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(6.dp),
                     border = BorderStroke(1.dp, BorderStrong),
                     contentPadding = PaddingValues(vertical = 11.dp)
@@ -858,14 +875,24 @@ fun InterruptionHistoryCard(context: Context) {
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
+            // Header Row with robust spacing
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
-                    Text("Interruption History", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextPrimary)
-                    Text("Encrypted on-device SQLite database with auto-expiry", fontSize = 12.sp, color = TextSecondary)
+                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                    Text(
+                        text = "Interruption History",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = TextPrimary
+                    )
+                    Text(
+                        text = "Local SQLite storage with automatic expiry",
+                        fontSize = 12.sp,
+                        color = TextSecondary
+                    )
                 }
 
                 Surface(
@@ -878,6 +905,8 @@ fun InterruptionHistoryCard(context: Context) {
                         color = TextPrimary,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        softWrap = false,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
@@ -915,7 +944,7 @@ fun InterruptionHistoryCard(context: Context) {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column(modifier = Modifier.weight(1f)) {
+                                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                                     Text(
                                         text = "${capsule.personName} (${capsule.distanceZone})",
                                         fontWeight = FontWeight.Bold,
@@ -972,7 +1001,7 @@ fun InterruptionHistoryCard(context: Context) {
                             )
                         }
                     },
-                    modifier = Modifier.weight(1.2f),
+                    modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(6.dp),
                     border = BorderStroke(1.dp, BorderStrong)
                 ) {
@@ -981,7 +1010,7 @@ fun InterruptionHistoryCard(context: Context) {
 
                 OutlinedButton(
                     onClick = { coroutineScope.launch { repository.deleteAll() } },
-                    modifier = Modifier.weight(0.8f),
+                    modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(6.dp),
                     border = BorderStroke(1.dp, AccentRedBorder)
                 ) {
@@ -1009,7 +1038,7 @@ fun VivoNotesSyncCard(context: Context) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
                     Text("Vivo Office Kit & Notes", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TextPrimary)
                     Text("Direct Markdown task handoff into Vivo Notes", fontSize = 12.sp, color = TextSecondary)
                 }
