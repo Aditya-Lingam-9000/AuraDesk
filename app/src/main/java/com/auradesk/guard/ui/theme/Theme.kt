@@ -9,25 +9,25 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-private val ProfessionalLightColorScheme = lightColorScheme(
-    primary = Slate900,
+private val CleanLightColorScheme = lightColorScheme(
+    primary = BrandPrimary,
     onPrimary = PureWhite,
-    primaryContainer = Slate100,
-    onPrimaryContainer = Slate900,
-    secondary = Slate700,
+    primaryContainer = BorderSubtle,
+    onPrimaryContainer = TextPrimary,
+    secondary = TextSecondary,
     onSecondary = PureWhite,
-    secondaryContainer = Slate100,
-    onSecondaryContainer = Slate800,
-    tertiary = PrimaryBlue,
+    secondaryContainer = BorderSubtle,
+    onSecondaryContainer = TextPrimary,
+    tertiary = AccentBlue,
     onTertiary = PureWhite,
-    background = Slate50,
-    onBackground = Slate900,
-    surface = PureWhite,
-    onSurface = Slate900,
-    surfaceVariant = Slate100,
-    onSurfaceVariant = Slate700,
-    outline = Slate200,
-    outlineVariant = Slate300
+    background = AppBg,
+    onBackground = TextPrimary,
+    surface = SurfaceCard,
+    onSurface = TextPrimary,
+    surfaceVariant = AppBg,
+    onSurfaceVariant = TextSecondary,
+    outline = BorderSubtle,
+    outlineVariant = BorderStrong
 )
 
 @Composable
@@ -35,7 +35,7 @@ fun AuraDeskTheme(
     darkTheme: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = ProfessionalLightColorScheme
+    val colorScheme = CleanLightColorScheme
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {

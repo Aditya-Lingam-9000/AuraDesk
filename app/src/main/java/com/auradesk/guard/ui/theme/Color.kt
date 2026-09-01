@@ -2,33 +2,35 @@ package com.auradesk.guard.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Primary Professional Theme Colors
-val Slate900 = Color(0xFF0F172A)
-val Slate800 = Color(0xFF1E293B)
-val Slate700 = Color(0xFF334155)
-val Slate600 = Color(0xFF475569)
-val Slate500 = Color(0xFF64748B)
-val Slate400 = Color(0xFF94A3B8)
-val Slate300 = Color(0xFFCBD5E1)
-val Slate200 = Color(0xFFE2E8F0)
-val Slate100 = Color(0xFFF1F5F9)
-val Slate50  = Color(0xFFF8FAFC)
+// High-Contrast Professional Color System
 val PureWhite = Color(0xFFFFFFFF)
+val AppBg = Color(0xFFF9FAFB) // Gray 50
+val SurfaceCard = Color(0xFFFFFFFF)
+val BorderSubtle = Color(0xFFE5E7EB) // Gray 200
+val BorderStrong = Color(0xFFD1D5DB) // Gray 300
 
-// Primary Accent
-val PrimaryBlue = Color(0xFF1D4ED8)
-val PrimaryBlueLight = Color(0xFFEFF6FF)
-val PrimaryBlueBorder = Color(0xFFBFDBFE)
+// High-Contrast Text (Bold, Dark, Crisp)
+val TextPrimary = Color(0xFF111827) // Gray 900 (High contrast)
+val TextSecondary = Color(0xFF374151) // Gray 700 (Readable, not washed out)
+val TextMuted = Color(0xFF4B5563) // Gray 600
 
-// Functional Status Accents
-val StatusGreen = Color(0xFF059669)
-val StatusGreenBg = Color(0xFFECFDF5)
-val StatusGreenBorder = Color(0xFFA7F3D0)
+// Brand Primary & Buttons
+val BrandPrimary = Color(0xFF111827) // Solid Dark Neutral
+val BrandPrimaryHover = Color(0xFF1F2937)
 
-val StatusAmber = Color(0xFFD97706)
-val StatusAmberBg = Color(0xFFFFFBEB)
-val StatusAmberBorder = Color(0xFFFDE68A)
+// Status Accents (Functional only)
+val AccentGreen = Color(0xFF059669)
+val AccentGreenBg = Color(0xFFECFDF5)
+val AccentGreenBorder = Color(0xFFA7F3D0)
 
-val StatusRed = Color(0xFFDC2626)
-val StatusRedBg = Color(0xFFFEF2F2)
-val StatusRedBorder = Color(0xFFFECACA)
+val AccentAmber = Color(0xFFD97706)
+val AccentAmberBg = Color(0xFFFFFBEB)
+val AccentAmberBorder = Color(0xFFFDE68A)
+
+val AccentRed = Color(0xFFDC2626)
+val AccentRedBg = Color(0xFFFEF2F2)
+val AccentRedBorder = Color(0xFFFECACA)
+
+val AccentBlue = Color(0xFF2563EB)
+val AccentBlueBg = Color(0xFFEFF6FF)
+val AccentBlueBorder = Color(0xFFBFDBFE)

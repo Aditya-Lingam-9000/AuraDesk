@@ -16,7 +16,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -65,7 +64,7 @@ fun CameraRadarViewfinder(
     Card(
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = PureWhite),
-        border = BorderStroke(1.dp, Slate300),
+        border = BorderStroke(1.dp, BorderStrong),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
@@ -78,15 +77,15 @@ fun CameraRadarViewfinder(
                     Icon(
                         imageVector = Icons.Default.Videocam,
                         contentDescription = null,
-                        tint = Slate800,
+                        tint = TextPrimary,
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         "Rear Vision Radar Feed",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                        color = Slate900
+                        fontSize = 14.sp,
+                        color = TextPrimary
                     )
                 }
 
@@ -94,7 +93,7 @@ fun CameraRadarViewfinder(
                     onClick = onClose,
                     modifier = Modifier.size(24.dp)
                 ) {
-                    Icon(Icons.Default.Close, contentDescription = "Close", tint = Slate500, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.Close, contentDescription = "Close", tint = TextMuted, modifier = Modifier.size(16.dp))
                 }
             }
 
@@ -106,18 +105,18 @@ fun CameraRadarViewfinder(
                         .fillMaxWidth()
                         .height(160.dp)
                         .clip(RoundedCornerShape(6.dp))
-                        .background(Slate100)
+                        .background(AppBg)
                         .padding(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    Icon(Icons.Default.Videocam, contentDescription = null, tint = Slate600, modifier = Modifier.size(32.dp))
+                    Icon(Icons.Default.Videocam, contentDescription = null, tint = TextMuted, modifier = Modifier.size(32.dp))
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("Camera permission required for Vision Radar", fontSize = 12.sp, color = Slate700)
+                    Text("Camera permission required for Vision Radar", fontSize = 12.sp, color = TextSecondary)
                     Spacer(modifier = Modifier.height(10.dp))
                     Button(
                         onClick = { permissionLauncher.launch(android.Manifest.permission.CAMERA) },
-                        colors = ButtonDefaults.buttonColors(containerColor = Slate900),
+                        colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
                         shape = RoundedCornerShape(6.dp)
                     ) {
                         Text("Grant Camera Access", fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
@@ -194,9 +193,9 @@ fun CameraRadarViewfinder(
                             val boxH = (bottom - top).coerceAtLeast(40f)
 
                             val boxColor = when {
-                                radar.distanceMeters <= 1.0f -> StatusRed
-                                radar.distanceMeters <= 3.0f -> StatusAmber
-                                else -> PrimaryBlue
+                                radar.distanceMeters <= 1.0f -> AccentRed
+                                radar.distanceMeters <= 3.0f -> AccentAmber
+                                else -> AccentBlue
                             }
 
                             drawRect(
@@ -216,8 +215,8 @@ fun CameraRadarViewfinder(
                         // Top Distance Pill
                         Surface(
                             shape = RoundedCornerShape(4.dp),
-                            color = Slate900.copy(alpha = 0.9f),
-                            border = BorderStroke(1.dp, Slate700),
+                            color = Color(0xCC111827),
+                            border = BorderStroke(1.dp, Color(0xFF374151)),
                             modifier = Modifier
                                 .align(Alignment.TopCenter)
                                 .padding(top = 10.dp)
@@ -241,17 +240,10 @@ fun CameraRadarViewfinder(
                                 )
                                 if (radar.isApproaching) {
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Icon(
-                                        imageVector = Icons.Default.TrendingUp,
-                                        contentDescription = null,
-                                        tint = StatusAmber,
-                                        modifier = Modifier.size(12.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(2.dp))
                                     Text(
                                         text = "+${String.format("%.0f", radar.growthRatePercentPerSec)}%/s",
                                         fontWeight = FontWeight.Bold,
-                                        color = StatusAmber,
+                                        color = AccentAmber,
                                         fontSize = 10.sp
                                     )
                                 }
@@ -260,14 +252,14 @@ fun CameraRadarViewfinder(
                     } else {
                         Surface(
                             shape = RoundedCornerShape(4.dp),
-                            color = Slate900.copy(alpha = 0.75f),
+                            color = Color(0xCC111827),
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
                                 .padding(bottom = 10.dp)
                         ) {
                             Text(
                                 text = "Point rear camera at entrance / desk approach path",
-                                color = Slate300,
+                                color = Color(0xFFD1D5DB),
                                 fontSize = 11.sp,
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                             )

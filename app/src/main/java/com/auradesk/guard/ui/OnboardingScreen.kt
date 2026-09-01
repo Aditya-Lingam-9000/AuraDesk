@@ -70,7 +70,6 @@ fun OnboardingScreen(onFinish: () -> Unit) {
 
     val currentStep = steps[currentStepIndex]
 
-    // Hardware Permission Launcher
     val permissionsToRequest = remember {
         buildList {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -112,33 +111,24 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .clip(CircleShape)
-                            .background(Slate900)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "AURADESK",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Slate900,
-                        letterSpacing = 1.5.sp
-                    )
-                }
+                Text(
+                    text = "AURADESK",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                    letterSpacing = 1.5.sp
+                )
 
                 Surface(
                     shape = RoundedCornerShape(4.dp),
-                    color = Slate100,
-                    border = BorderStroke(1.dp, Slate200)
+                    color = AppBg,
+                    border = BorderStroke(1.dp, BorderSubtle)
                 ) {
                     Text(
                         text = currentStep.badgeLabel,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = Slate700,
+                        color = TextSecondary,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
@@ -149,20 +139,19 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.padding(vertical = 24.dp)
             ) {
-                // Flat Solid Icon Container
                 Box(
                     modifier = Modifier
-                        .size(96.dp)
+                        .size(88.dp)
                         .clip(CircleShape)
-                        .background(Slate100)
-                        .border(1.dp, Slate300, CircleShape),
+                        .background(AppBg)
+                        .border(1.dp, BorderStrong, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = currentStep.icon,
                         contentDescription = null,
-                        tint = Slate900,
-                        modifier = Modifier.size(44.dp)
+                        tint = TextPrimary,
+                        modifier = Modifier.size(40.dp)
                     )
                 }
 
@@ -172,7 +161,7 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                     text = currentStep.subtitle,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Slate500,
+                    color = TextMuted,
                     letterSpacing = 1.2.sp
                 )
 
@@ -182,7 +171,7 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                     text = currentStep.title,
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Slate900,
+                    color = TextPrimary,
                     textAlign = TextAlign.Center
                 )
 
@@ -191,7 +180,7 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                 Text(
                     text = currentStep.description,
                     fontSize = 14.sp,
-                    color = Slate600,
+                    color = TextSecondary,
                     textAlign = TextAlign.Center,
                     lineHeight = 22.sp,
                     modifier = Modifier.padding(horizontal = 8.dp)
@@ -203,8 +192,8 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                 if (currentStepIndex == 2) {
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = Slate50,
-                        border = BorderStroke(1.dp, Slate200),
+                        color = AppBg,
+                        border = BorderStroke(1.dp, BorderSubtle),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
@@ -217,27 +206,27 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                                     Icon(
                                         imageVector = Icons.Default.Security,
                                         contentDescription = null,
-                                        tint = Slate700,
+                                        tint = TextSecondary,
                                         modifier = Modifier.size(16.dp)
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        text = "Required Device Permissions",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = Slate900
+                                        text = "Hardware Permissions",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TextPrimary
                                     )
                                 }
                                 Surface(
                                     shape = RoundedCornerShape(4.dp),
-                                    color = if (permissionsGranted) StatusGreenBg else StatusAmberBg,
-                                    border = BorderStroke(1.dp, if (permissionsGranted) StatusGreenBorder else StatusAmberBorder)
+                                    color = if (permissionsGranted) AccentGreenBg else AccentAmberBg,
+                                    border = BorderStroke(1.dp, if (permissionsGranted) AccentGreenBorder else AccentAmberBorder)
                                 ) {
                                     Text(
                                         text = if (permissionsGranted) "Granted" else "Required",
-                                        fontSize = 10.sp,
+                                        fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (permissionsGranted) StatusGreen else StatusAmber,
+                                        color = if (permissionsGranted) AccentGreen else AccentAmber,
                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                     )
                                 }
@@ -247,13 +236,13 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                                 Spacer(modifier = Modifier.height(12.dp))
                                 Button(
                                     onClick = { permissionLauncher.launch(permissionsToRequest.toTypedArray()) },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Slate900),
+                                    colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
                                     shape = RoundedCornerShape(6.dp),
                                     modifier = Modifier.fillMaxWidth(),
                                     contentPadding = PaddingValues(vertical = 10.dp)
                                 ) {
                                     Text(
-                                        "Grant Camera & Microphone Access",
+                                        "Grant Camera & Mic Access",
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         color = PureWhite
@@ -267,7 +256,6 @@ fun OnboardingScreen(onFinish: () -> Unit) {
 
             // Bottom Navigation Row
             Column(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-                // Page Indicator Dots
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.Center,
@@ -279,7 +267,7 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                                 .padding(horizontal = 3.dp)
                                 .size(if (index == currentStepIndex) 20.dp else 6.dp, 6.dp)
                                 .clip(RoundedCornerShape(3.dp))
-                                .background(if (index == currentStepIndex) Slate900 else Slate200)
+                                .background(if (index == currentStepIndex) BrandPrimary else BorderStrong)
                         )
                     }
                 }
@@ -295,8 +283,8 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                             onClick = { currentStepIndex-- },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(6.dp),
-                            border = BorderStroke(1.dp, Slate300),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Slate700)
+                            border = BorderStroke(1.dp, BorderStrong),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary)
                         ) {
                             Text("Back", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                         }
@@ -313,12 +301,12 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                             }
                         },
                         modifier = Modifier.weight(if (currentStepIndex > 0) 1.5f else 1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = Slate900),
+                        colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
                         shape = RoundedCornerShape(6.dp),
                         contentPadding = PaddingValues(vertical = 12.dp)
                     ) {
                         Text(
-                            text = if (currentStepIndex < steps.size - 1) "Continue" else "Open Dashboard",
+                            text = if (currentStepIndex < steps.size - 1) "Continue" else "Enter Dashboard",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = PureWhite

@@ -40,11 +40,11 @@ fun InterruptionCard(
     }
 
     Card(
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(10.dp),
         colors = CardDefaults.cardColors(containerColor = PureWhite),
         border = BorderStroke(
             1.dp,
-            if (capsule.isUrgent) StatusRed else Slate200
+            if (capsule.isUrgent) AccentRedBorder else BorderSubtle
         ),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -60,15 +60,15 @@ fun InterruptionCard(
                         modifier = Modifier
                             .size(40.dp)
                             .clip(CircleShape)
-                            .background(Slate100)
-                            .border(1.dp, Slate300, CircleShape),
+                            .background(AppBg)
+                            .border(1.dp, BorderStrong, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = capsule.personName.firstOrNull()?.toString()?.uppercase() ?: "V",
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp,
-                            color = Slate800
+                            color = TextPrimary
                         )
                     }
 
@@ -79,12 +79,12 @@ fun InterruptionCard(
                             text = capsule.personName,
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp,
-                            color = Slate900
+                            color = TextPrimary
                         )
                         Text(
                             text = "$formattedTime • ${capsule.durationSec}s visit (${capsule.distanceZone})",
                             fontSize = 12.sp,
-                            color = Slate500
+                            color = TextSecondary
                         )
                     }
                 }
@@ -93,12 +93,12 @@ fun InterruptionCard(
                     if (capsule.targetComponent.isNotBlank()) {
                         Surface(
                             shape = RoundedCornerShape(4.dp),
-                            color = Slate100,
-                            border = BorderStroke(1.dp, Slate200)
+                            color = AppBg,
+                            border = BorderStroke(1.dp, BorderSubtle)
                         ) {
                             Text(
                                 text = capsule.targetComponent.uppercase(),
-                                color = Slate700,
+                                color = TextSecondary,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -108,15 +108,15 @@ fun InterruptionCard(
 
                     Surface(
                         shape = RoundedCornerShape(4.dp),
-                        color = if (capsule.isUrgent) StatusRedBg else Slate100,
+                        color = if (capsule.isUrgent) AccentRedBg else BorderSubtle,
                         border = BorderStroke(
                             1.dp,
-                            if (capsule.isUrgent) StatusRedBorder else Slate200
+                            if (capsule.isUrgent) AccentRedBorder else BorderStrong
                         )
                     ) {
                         Text(
                             text = if (capsule.isUrgent) "Urgent" else "Interruption",
-                            color = if (capsule.isUrgent) StatusRed else Slate700,
+                            color = if (capsule.isUrgent) AccentRed else TextPrimary,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -129,9 +129,9 @@ fun InterruptionCard(
 
             // Action Item Box
             Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = Slate50,
-                border = BorderStroke(1.dp, Slate200),
+                shape = RoundedCornerShape(6.dp),
+                color = AppBg,
+                border = BorderStroke(1.dp, BorderSubtle),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
@@ -140,52 +140,32 @@ fun InterruptionCard(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Bolt,
-                                contentDescription = null,
-                                tint = Slate700,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "SYNTHESIZED ACTION ITEM",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Slate700,
-                                letterSpacing = 0.8.sp
-                            )
-                        }
+                        Text(
+                            text = "ACTION ITEM",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextMuted,
+                            letterSpacing = 0.8.sp
+                        )
 
                         if (capsule.aiDeadline.isNotBlank()) {
                             Surface(
                                 shape = RoundedCornerShape(4.dp),
-                                color = StatusAmberBg,
-                                border = BorderStroke(1.dp, StatusAmberBorder)
+                                color = AccentAmberBg,
+                                border = BorderStroke(1.dp, AccentAmberBorder)
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Schedule,
-                                        contentDescription = null,
-                                        tint = StatusAmber,
-                                        modifier = Modifier.size(10.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(3.dp))
-                                    Text(
-                                        text = capsule.aiDeadline,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = StatusAmber
-                                    )
-                                }
+                                Text(
+                                    text = capsule.aiDeadline,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = AccentAmber,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
                             }
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
 
                     val displayAction = if (capsule.aiActionItem.isNotBlank()) {
                         capsule.aiActionItem
@@ -197,7 +177,7 @@ fun InterruptionCard(
                         text = displayAction,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Slate900,
+                        color = TextPrimary,
                         lineHeight = 22.sp
                     )
 
@@ -206,36 +186,29 @@ fun InterruptionCard(
                         Text(
                             text = "Context: ${capsule.aiUrgencyReason}",
                             fontSize = 12.sp,
-                            color = Slate500
+                            color = TextSecondary
                         )
                     }
                 }
             }
 
-            // Raw Visitor Quote Box
+            // Raw Quote Box
             if (capsule.rawTranscript.isNotBlank()) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Surface(
                     shape = RoundedCornerShape(6.dp),
-                    color = Slate50,
-                    border = BorderStroke(1.dp, Slate200),
+                    color = AppBg,
+                    border = BorderStroke(1.dp, BorderSubtle),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
                         modifier = Modifier.padding(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.FormatQuote,
-                            contentDescription = null,
-                            tint = Slate500,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = "\"${capsule.rawTranscript}\"",
                             fontSize = 12.sp,
-                            color = Slate700,
+                            color = TextSecondary,
                             fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
                         )
                     }
@@ -254,18 +227,11 @@ fun InterruptionCard(
                     onClick = { showContextDetails = !showContextDetails },
                     contentPadding = PaddingValues(0.dp)
                 ) {
-                    Icon(
-                        imageVector = if (showContextDetails) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = null,
-                        tint = Slate700,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = if (showContextDetails) "Hide Work Context" else "View Pre-Interruption Context",
+                        text = if (showContextDetails) "Hide Pre-Interruption Context" else "View Pre-Interruption Context",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = Slate700
+                        color = TextPrimary
                     )
                 }
 
@@ -276,7 +242,7 @@ fun InterruptionCard(
                     Icon(
                         imageVector = Icons.Default.DeleteOutline,
                         contentDescription = "Delete",
-                        tint = StatusRed,
+                        tint = AccentRed,
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -285,8 +251,8 @@ fun InterruptionCard(
             AnimatedVisibility(visible = showContextDetails) {
                 Surface(
                     shape = RoundedCornerShape(6.dp),
-                    color = Slate100,
-                    border = BorderStroke(1.dp, Slate200),
+                    color = AppBg,
+                    border = BorderStroke(1.dp, BorderSubtle),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 4.dp, bottom = 8.dp)
@@ -295,18 +261,11 @@ fun InterruptionCard(
                         modifier = Modifier.padding(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Code,
-                            contentDescription = null,
-                            tint = Slate700,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = "Location: ${capsule.contextSnippet}",
                             fontFamily = FontFamily.Monospace,
-                            fontSize = 11.sp,
-                            color = Slate800
+                            fontSize = 12.sp,
+                            color = TextPrimary
                         )
                     }
                 }
@@ -327,23 +286,16 @@ fun InterruptionCard(
                     },
                     modifier = Modifier.weight(1.4f),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (capsule.status == "SAVED_TO_NOTES" || capsule.joviSynced) StatusGreenBg else Slate900
+                        containerColor = if (capsule.status == "SAVED_TO_NOTES" || capsule.joviSynced) AccentGreenBg else BrandPrimary
                     ),
                     shape = RoundedCornerShape(6.dp),
-                    border = if (capsule.status == "SAVED_TO_NOTES" || capsule.joviSynced) BorderStroke(1.dp, StatusGreenBorder) else null
+                    border = if (capsule.status == "SAVED_TO_NOTES" || capsule.joviSynced) BorderStroke(1.dp, AccentGreenBorder) else null
                 ) {
-                    Icon(
-                        imageVector = if (capsule.status == "SAVED_TO_NOTES" || capsule.joviSynced) Icons.Default.Check else Icons.Default.NoteAdd,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                        tint = if (capsule.status == "SAVED_TO_NOTES" || capsule.joviSynced) StatusGreen else PureWhite
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = if (capsule.status == "SAVED_TO_NOTES" || capsule.joviSynced) "Saved to Notes" else "Save to Vivo Notes",
-                        fontSize = 12.sp,
+                        fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = if (capsule.status == "SAVED_TO_NOTES" || capsule.joviSynced) StatusGreen else PureWhite
+                        color = if (capsule.status == "SAVED_TO_NOTES" || capsule.joviSynced) AccentGreen else PureWhite
                     )
                 }
 
@@ -351,32 +303,25 @@ fun InterruptionCard(
                     onClick = { onDismiss(capsule.id) },
                     modifier = Modifier.weight(0.8f),
                     shape = RoundedCornerShape(6.dp),
-                    border = BorderStroke(1.dp, Slate300),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Slate700)
+                    border = BorderStroke(1.dp, BorderStrong),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary)
                 ) {
-                    Text("Dismiss", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Dismiss", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Shake-to-delete indicator
+            // Shake hint
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = Icons.Default.Vibration,
-                    contentDescription = null,
-                    tint = Slate400,
-                    modifier = Modifier.size(12.dp)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
                 Text(
                     text = "Shake device 3 times to incinerate",
                     fontSize = 11.sp,
-                    color = Slate400
+                    color = TextMuted
                 )
             }
         }
