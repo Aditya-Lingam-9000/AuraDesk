@@ -39,6 +39,7 @@ androidx-camera-view = { group = "androidx.camera", name = "camera-view", versio
 mediapipe-tasks-vision = { group = "com.google.mediapipe", name = "tasks-vision", version = "0.10.14" }
 mlkit-pose-detection = { group = "com.google.mlkit", name = "pose-detection", version = "18.0.0-beta5" }
 mlkit-face-detection = { group = "com.google.mlkit", name = "face-detection", version = "16.1.7" }
+vosk-android = { group = "com.alphacephei", name = "vosk-android", version = "0.3.47" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

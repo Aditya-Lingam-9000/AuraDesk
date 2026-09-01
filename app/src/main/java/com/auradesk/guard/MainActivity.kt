@@ -40,6 +40,9 @@ class MainActivity : ComponentActivity() {
         repository = InterruptionRepository.getInstance(this)
         feedbackManager = FeedbackManager(this)
 
+        // Ensure GuardService instance is ready for static access
+        GuardService.ensureAudioCapsuleManager(this)
+
         shakeDetector = ShakeDetector(this) {
             // Shake-to-delete action
             feedbackManager.playIncinerateFeedback()
@@ -53,61 +56,75 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             AuraDeskTheme {
+                val prefs = remember { getSharedPreferences("auradesk_prefs", MODE_PRIVATE) }
+                var showOnboarding by remember {
+                    mutableStateOf(!prefs.getBoolean("has_completed_onboarding", false))
+                }
+
                 val isArmed by GuardService.isArmed.collectAsState()
                 val activeCapsule by repository.activeCapsule.collectAsState()
                 val coroutineScope = rememberCoroutineScope()
 
-                // Interruption Capsule Pop-up upon lifting phone if there's a new interruption
-                if (!isArmed && activeCapsule != null) {
-                    Dialog(
-                        onDismissRequest = {
-                            activeCapsule?.let { capsule ->
-                                coroutineScope.launch { repository.dismiss(capsule.id) }
-                            }
-                        },
-                        properties = DialogProperties(usePlatformDefaultWidth = false)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(Color(0xCC090D14))
-                                .padding(20.dp),
-                            contentAlignment = Alignment.Center
+                if (showOnboarding) {
+                    com.auradesk.guard.ui.OnboardingScreen(
+                        onFinish = { showOnboarding = false }
+                    )
+                } else {
+                    // Interruption Capsule Pop-up upon lifting phone if there's a new interruption
+                    if (!isArmed && activeCapsule != null) {
+                        Dialog(
+                            onDismissRequest = {
+                                activeCapsule?.let { capsule ->
+                                    coroutineScope.launch { repository.dismiss(capsule.id) }
+                                }
+                            },
+                            properties = DialogProperties(usePlatformDefaultWidth = false)
                         ) {
-                            activeCapsule?.let { capsule ->
-                                InterruptionCard(
-                                    capsule = capsule,
-                                    onSaveToNotes = { id ->
-                                        coroutineScope.launch {
-                                            repository.markSavedToNotes(id)
-                                            Toast.makeText(this@MainActivity, "✅ Saved to Jovi Notes (Sync Ready)", Toast.LENGTH_SHORT).show()
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color(0xCC090D14))
+                                    .padding(20.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                activeCapsule?.let { capsule ->
+                                    InterruptionCard(
+                                        capsule = capsule,
+                                        onSaveToNotes = { id ->
+                                            coroutineScope.launch {
+                                                repository.markSavedToNotes(id)
+                                                Toast.makeText(this@MainActivity, "✅ Saved to Jovi Notes (Sync Ready)", Toast.LENGTH_SHORT).show()
+                                            }
+                                        },
+                                        onDismiss = { id ->
+                                            coroutineScope.launch { repository.dismiss(id) }
+                                        },
+                                        onDelete = { id ->
+                                            coroutineScope.launch { repository.delete(id) }
                                         }
-                                    },
-                                    onDismiss = { id ->
-                                        coroutineScope.launch { repository.dismiss(id) }
-                                    },
-                                    onDelete = { id ->
-                                        coroutineScope.launch { repository.delete(id) }
-                                    }
-                                )
+                                    )
+                                }
                             }
                         }
                     }
-                }
 
-                Crossfade(targetState = isArmed, label = "ScreenTransition") { armed ->
-                    if (armed) {
-                        GuardArmedScreen(
-                            onDisarm = {
-                                GuardService.stopService(this@MainActivity)
-                            }
-                        )
-                    } else {
-                        DashboardScreen()
+                    Crossfade(targetState = isArmed, label = "ScreenTransition") { armed ->
+                        if (armed) {
+                            GuardArmedScreen(
+                                onDisarm = {
+                                    GuardService.stopService(this@MainActivity)
+                                }
+                            )
+                        } else {
+                            DashboardScreen(
+                                onReplayTour = { showOnboarding = true }
+                            )
+                        }
                     }
                 }
             }
         }
+
     }
 
     override fun onResume() {

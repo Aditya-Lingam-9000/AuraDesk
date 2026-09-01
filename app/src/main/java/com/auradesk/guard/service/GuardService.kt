@@ -47,7 +47,96 @@ class GuardService : Service() {
         private val _liveDeepWork = MutableStateFlow(com.auradesk.guard.focus.DeepWorkState())
         val liveDeepWork: StateFlow<com.auradesk.guard.focus.DeepWorkState> = _liveDeepWork.asStateFlow()
 
+        private val _liveAudioCapsule = MutableStateFlow(com.auradesk.guard.audio.AudioCapsuleState())
+        val liveAudioCapsule: StateFlow<com.auradesk.guard.audio.AudioCapsuleState> = _liveAudioCapsule.asStateFlow()
+
+        val capsuleSynthesizer = com.auradesk.guard.llm.CapsuleSynthesizer()
+        private val _liveSynthesizedTask = MutableStateFlow<com.auradesk.guard.llm.SummarizedTask?>(null)
+        val liveSynthesizedTask: StateFlow<com.auradesk.guard.llm.SummarizedTask?> = _liveSynthesizedTask.asStateFlow()
+
+        private var joviNotesSyncManagerInstance: com.auradesk.guard.notes.JoviNotesSyncManager? = null
+
+        fun getJoviNotesSyncManager(context: Context): com.auradesk.guard.notes.JoviNotesSyncManager {
+            if (joviNotesSyncManagerInstance == null) {
+                joviNotesSyncManagerInstance = com.auradesk.guard.notes.JoviNotesSyncManager.getInstance(context.applicationContext)
+            }
+            return joviNotesSyncManagerInstance!!
+        }
+
+        private var powerManagerGuardInstance: com.auradesk.guard.privacy.PowerManagerGuard? = null
+
+        fun getPowerManagerGuard(context: Context): com.auradesk.guard.privacy.PowerManagerGuard {
+            if (powerManagerGuardInstance == null) {
+                powerManagerGuardInstance = com.auradesk.guard.privacy.PowerManagerGuard.getInstance(context.applicationContext)
+            }
+            return powerManagerGuardInstance!!
+        }
+
+        private var privacyAuditorInstance: com.auradesk.guard.privacy.PrivacyAuditor? = null
+
+        fun getPrivacyAuditor(context: Context): com.auradesk.guard.privacy.PrivacyAuditor {
+            if (privacyAuditorInstance == null) {
+                privacyAuditorInstance = com.auradesk.guard.privacy.PrivacyAuditor.getInstance(context.applicationContext)
+            }
+            return privacyAuditorInstance!!
+        }
+
         private var deepWorkDetectorInstance: com.auradesk.guard.focus.DeepWorkDetector? = null
+        private var audioCapsuleManagerInstance: com.auradesk.guard.audio.AudioCapsuleManager? = null
+
+        fun ensureAudioCapsuleManager(context: Context): com.auradesk.guard.audio.AudioCapsuleManager {
+            if (audioCapsuleManagerInstance == null) {
+                val appContext = context.applicationContext
+                val manager = com.auradesk.guard.audio.AudioCapsuleManager(appContext)
+                audioCapsuleManagerInstance = manager
+                val repo = com.auradesk.guard.data.InterruptionRepository.getInstance(appContext)
+                val joviSync = getJoviNotesSyncManager(appContext)
+
+                manager.onCapsuleRecorded = { transcript, durationSec, isUrgent ->
+                    val synthesized = capsuleSynthesizer.synthesize(transcript, "Desk Visitor")
+                    _liveSynthesizedTask.value = synthesized
+
+                    val summaryTitle = if (synthesized.actionItem.isNotBlank()) {
+                        synthesized.actionItem
+                    } else if (transcript.isNotBlank() && transcript.length > 5) {
+                        "\"$transcript\""
+                    } else {
+                        "Desk visitor for ${durationSec}s"
+                    }
+
+                    val entity = com.auradesk.guard.data.InterruptionEntity(
+                        personName = "Desk Visitor",
+                        taskSummary = summaryTitle,
+                        aiActionItem = synthesized.actionItem,
+                        aiDeadline = synthesized.deadlineOrTime ?: "",
+                        aiUrgencyReason = synthesized.urgencyReason ?: "",
+                        targetComponent = synthesized.targetComponent ?: "",
+                        rawTranscript = transcript,
+                        hasVoiceTranscript = transcript.isNotBlank(),
+                        contextSnippet = "Editing main.py at line 124",
+                        distanceZone = "0.5m (At Desk)",
+                        durationSec = durationSec,
+                        isUrgent = isUrgent || synthesized.urgencyLevel == com.auradesk.guard.llm.UrgencyLevel.CRITICAL,
+                        status = "NEW"
+                    )
+
+                    CoroutineScope(Dispatchers.IO).launch {
+                        val id = repo.insert(entity)
+                        if (joviSync.syncState.value.isAutoSyncEnabled && (entity.isUrgent || entity.aiActionItem.isNotBlank())) {
+                            joviSync.syncInterruptionToNotes(entity.copy(id = id))
+                            repo.markJoviSynced(id)
+                        }
+                    }
+                }
+
+                CoroutineScope(Dispatchers.Main).launch {
+                    manager.capsuleState.collect {
+                        _liveAudioCapsule.value = it
+                    }
+                }
+            }
+            return audioCapsuleManagerInstance!!
+        }
 
         fun simulateRadar(distance: Float, isApproaching: Boolean, growthRate: Float = 28.5f) {
             radarDetector.simulate(distance, isApproaching, growthRate)
@@ -81,6 +170,78 @@ class GuardService : Service() {
             deepWorkDetectorInstance?.setEnvironmentProfile(profile)
         }
 
+        fun startAudioCapsule(context: Context? = null, durationSec: Int = 10) {
+            if (context != null) {
+                val manager = ensureAudioCapsuleManager(context)
+                manager.start10SecCapsuleCapture("Manual / Test Trigger")
+            } else {
+                audioCapsuleManagerInstance?.start10SecCapsuleCapture("Manual / Test Trigger")
+            }
+        }
+
+        fun simulateSpeechCapsule(
+            context: Context? = null,
+            speakerName: String,
+            speechText: String,
+            durationSec: Long = 6L,
+            isUrgent: Boolean = true
+        ) {
+            if (context != null) {
+                val manager = ensureAudioCapsuleManager(context)
+                val repo = com.auradesk.guard.data.InterruptionRepository.getInstance(context)
+                val synthesized = capsuleSynthesizer.synthesize(speechText, speakerName)
+                _liveSynthesizedTask.value = synthesized
+
+                manager.simulateTranscript(speakerName, speechText, durationSec, isUrgent)
+                CoroutineScope(Dispatchers.IO).launch {
+                    repo.insert(
+                        com.auradesk.guard.data.InterruptionEntity(
+                            personName = speakerName,
+                            taskSummary = synthesized.actionItem,
+                            aiActionItem = synthesized.actionItem,
+                            aiDeadline = synthesized.deadlineOrTime ?: "",
+                            aiUrgencyReason = synthesized.urgencyReason ?: "",
+                            targetComponent = synthesized.targetComponent ?: "",
+                            rawTranscript = speechText,
+                            hasVoiceTranscript = true,
+                            contextSnippet = "Editing main.py at line 124",
+                            distanceZone = "0.5m (At Desk)",
+                            durationSec = durationSec,
+                            isUrgent = isUrgent || synthesized.urgencyLevel == com.auradesk.guard.llm.UrgencyLevel.CRITICAL,
+                            status = "NEW"
+                        )
+                    )
+                }
+            } else {
+                audioCapsuleManagerInstance?.simulateTranscript(speakerName, speechText, durationSec, isUrgent)
+            }
+        }
+
+        fun synthesizePrompt(context: Context, rawText: String, speakerName: String = "Desk Visitor") {
+            val synthesized = capsuleSynthesizer.synthesize(rawText, speakerName)
+            _liveSynthesizedTask.value = synthesized
+            val repo = com.auradesk.guard.data.InterruptionRepository.getInstance(context)
+            CoroutineScope(Dispatchers.IO).launch {
+                repo.insert(
+                    com.auradesk.guard.data.InterruptionEntity(
+                        personName = speakerName,
+                        taskSummary = synthesized.actionItem,
+                        aiActionItem = synthesized.actionItem,
+                        aiDeadline = synthesized.deadlineOrTime ?: "",
+                        aiUrgencyReason = synthesized.urgencyReason ?: "",
+                        targetComponent = synthesized.targetComponent ?: "",
+                        rawTranscript = rawText,
+                        hasVoiceTranscript = true,
+                        contextSnippet = "Editing main.py at line 124",
+                        distanceZone = "0.5m (At Desk)",
+                        durationSec = 5L,
+                        isUrgent = synthesized.urgencyLevel == com.auradesk.guard.llm.UrgencyLevel.CRITICAL,
+                        status = "NEW"
+                    )
+                )
+            }
+        }
+
         fun startService(context: Context) {
             val intent = Intent(context, GuardService::class.java).apply {
                 action = ACTION_START
@@ -102,12 +263,14 @@ class GuardService : Service() {
 
     private lateinit var faceDownDetector: FaceDownDetector
     private lateinit var deepWorkDetector: com.auradesk.guard.focus.DeepWorkDetector
+    private lateinit var audioCapsuleManager: com.auradesk.guard.audio.AudioCapsuleManager
     private lateinit var feedbackManager: FeedbackManager
     private lateinit var repository: com.auradesk.guard.data.InterruptionRepository
     private val serviceScope = CoroutineScope(Dispatchers.Main + Job())
     private var sensorCollectJob: Job? = null
     private var stateCollectJob: Job? = null
     private var deepWorkCollectJob: Job? = null
+    private var audioCapsuleCollectJob: Job? = null
     private var radarCollectJob: Job? = null
     private var lastArmedState = false
 
@@ -124,6 +287,8 @@ class GuardService : Service() {
         feedbackManager = FeedbackManager(this)
         deepWorkDetector = com.auradesk.guard.focus.DeepWorkDetector(this)
         deepWorkDetectorInstance = deepWorkDetector
+        audioCapsuleManager = com.auradesk.guard.audio.AudioCapsuleManager(this)
+        audioCapsuleManagerInstance = audioCapsuleManager
         repository = com.auradesk.guard.data.InterruptionRepository.getInstance(this)
     }
 
@@ -179,6 +344,38 @@ class GuardService : Service() {
             }
         }
 
+        audioCapsuleCollectJob?.cancel()
+        audioCapsuleCollectJob = serviceScope.launch {
+            audioCapsuleManager.capsuleState.collect { audioState ->
+                _liveAudioCapsule.value = audioState
+            }
+        }
+
+        // Automatic Interruption Capsule Storage Bridge
+        audioCapsuleManager.onCapsuleRecorded = { transcript, durationSec, isUrgent ->
+            val distanceStr = if (closestZoneInVisit == com.auradesk.guard.vision.RadarZone.CLOSE_05M) "0.5m (At Desk)" else "2.0m (Approached)"
+            val summaryTitle = if (transcript.isNotBlank() && transcript.length > 10) {
+                "\"$transcript\""
+            } else {
+                "Desk visitor at $distanceStr for ${durationSec}s"
+            }
+
+            serviceScope.launch(Dispatchers.IO) {
+                repository.insert(
+                    com.auradesk.guard.data.InterruptionEntity(
+                        personName = "Desk Visitor",
+                        taskSummary = summaryTitle,
+                        rawTranscript = transcript,
+                        hasVoiceTranscript = transcript.isNotBlank(),
+                        contextSnippet = "Editing main.py at line 124",
+                        distanceZone = distanceStr,
+                        durationSec = durationSec,
+                        isUrgent = isUrgent
+                    )
+                )
+            }
+        }
+
         // Real-Time Radar Haptic Whisper & Auto-Capsule Bridge
         radarCollectJob?.cancel()
         radarCollectJob = serviceScope.launch {
@@ -199,6 +396,11 @@ class GuardService : Service() {
                             lastZoneVibrated = com.auradesk.guard.vision.RadarZone.CLOSE_05M
                             lastVibrationTime = now
                         }
+
+                        // Autonomous 10s Capsule Trigger on 0.5m Approach
+                        if (!audioCapsuleManager.capsuleState.value.isRecording) {
+                            audioCapsuleManager.start10SecCapsuleCapture("Radar 0.5m Proximity")
+                        }
                     } else if (radar.zone == com.auradesk.guard.vision.RadarZone.MID_2M && radar.isApproaching) {
                         if (closestZoneInVisit != com.auradesk.guard.vision.RadarZone.CLOSE_05M) {
                             closestZoneInVisit = com.auradesk.guard.vision.RadarZone.MID_2M
@@ -215,7 +417,10 @@ class GuardService : Service() {
                     val durationSec = kotlin.math.max(1L, (now - visitStartTime) / 1000L)
                     Log.i(TAG, "Real-time visit ended: duration=${durationSec}s, closestZone=${closestZoneInVisit.label}")
 
-                    if (durationSec >= 2L) {
+                    // Finish active recording capsule if in flight
+                    if (audioCapsuleManager.capsuleState.value.isRecording) {
+                        audioCapsuleManager.finishCapsuleCapture()
+                    } else if (durationSec >= 2L && !audioCapsuleManager.capsuleState.value.isRecording) {
                         val distanceStr = if (closestZoneInVisit == com.auradesk.guard.vision.RadarZone.CLOSE_05M) "0.5m (At Desk)" else "2.0m (Approached)"
                         val taskDesc = if (closestZoneInVisit == com.auradesk.guard.vision.RadarZone.CLOSE_05M) {
                             "Visitor arrived at desk for ${durationSec}s during focus session"
@@ -244,6 +449,7 @@ class GuardService : Service() {
             }
         }
 
+
         stateCollectJob?.cancel()
         stateCollectJob = serviceScope.launch {
             faceDownDetector.isFaceDown.collect { faceDown ->
@@ -252,10 +458,12 @@ class GuardService : Service() {
                         Log.i(TAG, "Triggering Arm Audio/Haptic Feedback")
                         feedbackManager.playArmFeedback()
                         deepWorkDetector.startListening()
+                        audioCapsuleManager.startListening()
                     } else if (lastArmedState) {
                         Log.i(TAG, "Triggering Disarm Audio/Haptic Feedback")
                         feedbackManager.playDisarmFeedback()
                         deepWorkDetector.stopListening()
+                        audioCapsuleManager.stopListening()
                     }
                     lastArmedState = faceDown
                 }
@@ -274,10 +482,13 @@ class GuardService : Service() {
         lastArmedState = false
         faceDownDetector.stopListening()
         deepWorkDetector.stopListening()
+        audioCapsuleManager.stopListening()
         deepWorkDetectorInstance = null
+        audioCapsuleManagerInstance = null
         sensorCollectJob?.cancel()
         stateCollectJob?.cancel()
         deepWorkCollectJob?.cancel()
+        audioCapsuleCollectJob?.cancel()
         radarCollectJob?.cancel()
         stopForeground(STOP_FOREGROUND_REMOVE)
         Log.i(TAG, "GuardService stopped")

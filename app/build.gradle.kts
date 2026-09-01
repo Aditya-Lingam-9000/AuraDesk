@@ -21,11 +21,11 @@ android {
 
     buildTypes {
         release {
-            optimization {
-                enable = false
-            }
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
@@ -58,6 +58,9 @@ dependencies {
 
     // Vision & Person Detection (ML Kit Pose with 16KB alignment)
     implementation(libs.mlkit.pose.detection)
+
+    // Offline Speech-to-Text (Vosk STT)
+    implementation(libs.vosk.android)
 
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))

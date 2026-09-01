@@ -30,6 +30,7 @@ fun InterruptionCard(
     onDismiss: (Long) -> Unit,
     onDelete: (Long) -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var showContextDetails by remember { mutableStateOf(false) }
 
     val formattedTime = remember(capsule.timestamp) {
@@ -88,52 +89,139 @@ fun InterruptionCard(
                     }
                 }
 
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = if (capsule.isUrgent) Color(0x33EF4444) else Color(0x3338BDF8),
-                    border = androidx.compose.foundation.BorderStroke(
-                        1.dp,
-                        if (capsule.isUrgent) Color(0xFFEF4444) else Color(0xFF38BDF8)
-                    )
-                ) {
-                    Text(
-                        text = if (capsule.isUrgent) "🚨 URGENT" else "INTERRUPTION",
-                        color = if (capsule.isUrgent) Color(0xFFFCA5A5) else Color(0xFF38BDF8),
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Black,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                    )
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (capsule.targetComponent.isNotBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFF0F2E1E),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF00E676))
+                        ) {
+                            Text(
+                                text = capsule.targetComponent.uppercase(),
+                                color = Color(0xFF00E676),
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (capsule.isUrgent) Color(0x33EF4444) else Color(0x3338BDF8),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (capsule.isUrgent) Color(0xFFEF4444) else Color(0xFF38BDF8)
+                        )
+                    ) {
+                        Text(
+                            text = if (capsule.isUrgent) "🚨 URGENT" else "INTERRUPTION",
+                            color = if (capsule.isUrgent) Color(0xFFFCA5A5) else Color(0xFF38BDF8),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Black,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Big Bold Task Summary
+            // AI Distilled Action Item Card
             Surface(
                 shape = RoundedCornerShape(12.dp),
-                color = Color(0xFF1E293B).copy(alpha = 0.6f),
+                color = Color(0xFF1E293B).copy(alpha = 0.8f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF334155)),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Bolt, contentDescription = null, tint = Color(0xFF00E676), modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "AI SYNTHESIZED ACTION ITEM:",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFF00E676),
+                                letterSpacing = 0.8.sp
+                            )
+                        }
+
+                        if (capsule.aiDeadline.isNotBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = Color(0x33F59E0B),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF59E0B))
+                            ) {
+                                Text(
+                                    text = "⏰ ${capsule.aiDeadline}",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFFCD34D),
+                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    val displayAction = if (capsule.aiActionItem.isNotBlank()) {
+                        capsule.aiActionItem
+                    } else {
+                        capsule.taskSummary
+                    }
+
                     Text(
-                        text = "TASK / REQUEST CAPTURED:",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF64748B),
-                        letterSpacing = 0.8.sp
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = capsule.taskSummary,
-                        fontSize = 17.sp,
+                        text = displayAction,
+                        fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFFF8FAFC),
                         lineHeight = 22.sp
                     )
+
+                    if (capsule.aiUrgencyReason.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "Context: ${capsule.aiUrgencyReason}",
+                            fontSize = 11.sp,
+                            color = Color(0xFF94A3B8)
+                        )
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            // Raw Visitor Quote Accordion
+            if (capsule.rawTranscript.isNotBlank()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFF090E17),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1E293B)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.FormatQuote, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "\"${capsule.rawTranscript}\"",
+                            fontSize = 12.sp,
+                            color = Color(0xFFCBD5E1),
+                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Toggleable Work Context
             Row(
@@ -158,6 +246,7 @@ fun InterruptionCard(
                         color = Color(0xFF38BDF8)
                     )
                 }
+
 
                 IconButton(
                     onClick = { onDelete(capsule.id) },
@@ -210,27 +299,32 @@ fun InterruptionCard(
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Button(
-                    onClick = { onSaveToNotes(capsule.id) },
+                    onClick = {
+                        val joviSync = com.auradesk.guard.notes.JoviNotesSyncManager.getInstance(context)
+                        joviSync.syncInterruptionToNotes(capsule, launchChooser = true)
+                        onSaveToNotes(capsule.id)
+                    },
                     modifier = Modifier.weight(1.4f),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (capsule.status == "SAVED_TO_NOTES") Color(0xFF0F2E1E) else Color(0xFF2563EB)
+                        containerColor = if (capsule.status == "SAVED_TO_NOTES" || capsule.joviSynced) Color(0xFF0F2E1E) else Color(0xFF2563EB)
                     ),
                     shape = RoundedCornerShape(10.dp)
                 ) {
                     Icon(
-                        imageVector = if (capsule.status == "SAVED_TO_NOTES") Icons.Default.Check else Icons.Default.NoteAdd,
+                        imageVector = if (capsule.status == "SAVED_TO_NOTES" || capsule.joviSynced) Icons.Default.Check else Icons.Default.NoteAdd,
                         contentDescription = null,
                         modifier = Modifier.size(16.dp),
-                        tint = if (capsule.status == "SAVED_TO_NOTES") Color(0xFF00E676) else Color.White
+                        tint = if (capsule.status == "SAVED_TO_NOTES" || capsule.joviSynced) Color(0xFF00E676) else Color.White
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = if (capsule.status == "SAVED_TO_NOTES") "Saved to Notes" else "Create Task in Jovi Notes",
+                        text = if (capsule.status == "SAVED_TO_NOTES" || capsule.joviSynced) "✅ Synced to Jovi Notes" else "Create Task in Jovi Notes",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (capsule.status == "SAVED_TO_NOTES") Color(0xFF00E676) else Color.White
+                        color = if (capsule.status == "SAVED_TO_NOTES" || capsule.joviSynced) Color(0xFF00E676) else Color.White
                     )
                 }
+
 
                 OutlinedButton(
                     onClick = { onDismiss(capsule.id) },
@@ -241,6 +335,7 @@ fun InterruptionCard(
                     Text("Dismiss", fontSize = 12.sp)
                 }
             }
+
 
             Spacer(modifier = Modifier.height(12.dp))
 
