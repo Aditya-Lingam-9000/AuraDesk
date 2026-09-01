@@ -2,7 +2,9 @@ package com.auradesk.guard.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LockOpen
@@ -14,11 +16,15 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.auradesk.guard.ui.theme.liquidGleamEffect
+import com.auradesk.guard.ui.theme.liquidPressEffect
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -53,7 +59,9 @@ fun GuardArmedScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF000000)) // Pure Pitch Black
+            .background(Color(0xFF000000)) // Pure Pitch Black OLED
+            .statusBarsPadding()
+            .navigationBarsPadding()
             .padding(32.dp)
     ) {
         Column(
@@ -64,7 +72,7 @@ fun GuardArmedScreen(
             // Top Status Label
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(top = 24.dp)
+                modifier = Modifier.padding(top = 16.dp)
             ) {
                 Text(
                     text = "AURADESK",
@@ -73,30 +81,39 @@ fun GuardArmedScreen(
                     color = Color(0xFF6B7280),
                     letterSpacing = 2.sp
                 )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = if (deepWorkState.isDeepWork) "Deep Work Protected" else "Focus Sanctuary Active",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color(0xFFE5E7EB)
-                )
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(Color(0x2610B981))
+                        .border(1.dp, Color(0x4D10B981), RoundedCornerShape(20.dp))
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = if (deepWorkState.isDeepWork) "Deep Work Protected" else "Focus Sanctuary Active",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF34D399)
+                    )
+                }
             }
 
-            // Center: Big Sleek Digital Focus Timer
+            // Center: Digital Monospace Timer
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
                     text = formattedTime,
-                    fontSize = 64.sp,
+                    fontSize = 68.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
                     color = Color(0xFFFFFFFF),
-                    letterSpacing = (-1).sp
+                    letterSpacing = (-1.5).sp
                 )
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
@@ -118,18 +135,33 @@ fun GuardArmedScreen(
                 }
             }
 
-            // Bottom Disarm Button
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+            // Bottom Liquid Glass Disarm Pill
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color(0xFF27272A), Color(0xFF18181B))
+                        )
+                    )
+                    .border(
+                        BorderStroke(
+                            1.2.dp,
+                            Brush.linearGradient(
+                                listOf(Color(0x6671717A), Color(0x263F3F46))
+                            )
+                        ),
+                        RoundedCornerShape(18.dp)
+                    )
+                    .liquidPressEffect { onDisarm() }
+                    .padding(vertical = 15.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Button(
-                    onClick = onDisarm,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF18181B)),
-                    shape = RoundedCornerShape(8.dp),
-                    border = BorderStroke(1.dp, Color(0xFF27272A)),
-                    modifier = Modifier.fillMaxWidth(),
-                    contentPadding = PaddingValues(vertical = 14.dp)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.LockOpen,
@@ -142,7 +174,7 @@ fun GuardArmedScreen(
                         text = "Disarm Focus Guard",
                         color = Color(0xFFE5E7EB),
                         fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.SemiBold
                     )
                 }
             }

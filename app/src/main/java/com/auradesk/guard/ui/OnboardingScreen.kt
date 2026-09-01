@@ -6,6 +6,8 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -19,6 +21,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -92,13 +96,12 @@ fun OnboardingScreen(onFinish: () -> Unit) {
         permissionsGranted = result.values.all { it }
     }
 
-    Scaffold(
-        containerColor = PureWhite
-    ) { padding ->
+    LiquidGlassBackground {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .statusBarsPadding()
+                .navigationBarsPadding()
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
@@ -107,7 +110,7 @@ fun OnboardingScreen(onFinish: () -> Unit) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 12.dp),
+                    .padding(top = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -119,134 +122,108 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                     letterSpacing = 1.5.sp
                 )
 
-                Surface(
-                    shape = RoundedCornerShape(4.dp),
-                    color = AppBg,
-                    border = BorderStroke(1.dp, BorderSubtle)
-                ) {
-                    Text(
-                        text = currentStep.badgeLabel,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = TextSecondary,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
-                }
+                LiquidGlassBadge(
+                    text = currentStep.badgeLabel,
+                    textColor = TextPrimary,
+                    backgroundColor = Color(0x66FFFFFF),
+                    borderColor = Color(0x80CBD5E1)
+                )
             }
 
-            // Central Showcase
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(vertical = 24.dp)
+            // Central Liquid Glass Showcase
+            LiquidGlassCard(
+                shape = RoundedCornerShape(28.dp),
+                enableGleam = true,
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(88.dp)
-                        .clip(CircleShape)
-                        .background(AppBg)
-                        .border(1.dp, BorderStrong, CircleShape),
-                    contentAlignment = Alignment.Center
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(vertical = 12.dp)
                 ) {
-                    Icon(
-                        imageVector = currentStep.icon,
-                        contentDescription = null,
-                        tint = TextPrimary,
-                        modifier = Modifier.size(40.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(28.dp))
-
-                Text(
-                    text = currentStep.subtitle,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextMuted,
-                    letterSpacing = 1.2.sp
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Text(
-                    text = currentStep.title,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary,
-                    textAlign = TextAlign.Center
-                )
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                Text(
-                    text = currentStep.description,
-                    fontSize = 14.sp,
-                    color = TextSecondary,
-                    textAlign = TextAlign.Center,
-                    lineHeight = 22.sp,
-                    modifier = Modifier.padding(horizontal = 8.dp)
-                )
-
-                Spacer(modifier = Modifier.height(28.dp))
-
-                // Permissions Card on Final Step
-                if (currentStepIndex == 2) {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = AppBg,
-                        border = BorderStroke(1.dp, BorderSubtle),
-                        modifier = Modifier.fillMaxWidth()
+                    Box(
+                        modifier = Modifier
+                            .size(80.dp)
+                            .clip(CircleShape)
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(Color(0xFF1E293B), Color(0xFF0F172A))
+                                )
+                            )
+                            .border(1.5.dp, Color(0x6694A3B8), CircleShape),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
+                        Icon(
+                            imageVector = currentStep.icon,
+                            contentDescription = null,
+                            tint = PureWhite,
+                            modifier = Modifier.size(36.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    Text(
+                        text = currentStep.subtitle,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextMuted,
+                        letterSpacing = 1.2.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = currentStep.title,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text(
+                        text = currentStep.description,
+                        fontSize = 13.sp,
+                        color = TextSecondary,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 20.sp,
+                        modifier = Modifier.padding(horizontal = 4.dp)
+                    )
+
+                    // Permissions Card on Step 3
+                    if (currentStepIndex == 2) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        LiquidGlassTile(modifier = Modifier.fillMaxWidth()) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Default.Security,
-                                        contentDescription = null,
-                                        tint = TextSecondary,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = "Hardware Permissions",
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = TextPrimary
-                                    )
-                                }
-                                Surface(
-                                    shape = RoundedCornerShape(4.dp),
-                                    color = if (permissionsGranted) AccentGreenBg else AccentAmberBg,
-                                    border = BorderStroke(1.dp, if (permissionsGranted) AccentGreenBorder else AccentAmberBorder)
-                                ) {
-                                    Text(
-                                        text = if (permissionsGranted) "Granted" else "Required",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (permissionsGranted) AccentGreen else AccentAmber,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                    )
-                                }
+                                Text(
+                                    text = "Hardware Permissions",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextPrimary
+                                )
+                                LiquidGlassBadge(
+                                    text = if (permissionsGranted) "Granted" else "Required",
+                                    textColor = if (permissionsGranted) AccentGreen else AccentAmber,
+                                    backgroundColor = if (permissionsGranted) AccentGreenBg else AccentAmberBg,
+                                    borderColor = if (permissionsGranted) AccentGreenBorder else AccentAmberBorder
+                                )
                             }
 
                             if (!permissionsGranted) {
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Button(
+                                Spacer(modifier = Modifier.height(10.dp))
+                                LiquidGlassButton(
                                     onClick = { permissionLauncher.launch(permissionsToRequest.toTypedArray()) },
-                                    colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
-                                    shape = RoundedCornerShape(6.dp),
+                                    isPrimary = true,
+                                    shape = RoundedCornerShape(10.dp),
                                     modifier = Modifier.fillMaxWidth(),
                                     contentPadding = PaddingValues(vertical = 10.dp)
                                 ) {
-                                    Text(
-                                        "Grant Camera & Mic Access",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = PureWhite
-                                    )
+                                    Text("Grant Camera & Mic Access", fontSize = 12.sp, color = PureWhite, fontWeight = FontWeight.SemiBold)
                                 }
                             }
                         }
@@ -255,19 +232,32 @@ fun OnboardingScreen(onFinish: () -> Unit) {
             }
 
             // Bottom Navigation Row
-            Column(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+            Column(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                // Step Indicator Dots
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     steps.indices.forEach { index ->
+                        val isCurrent = index == currentStepIndex
+                        val dotWidth by animateDpAsState(
+                            targetValue = if (isCurrent) 24.dp else 6.dp,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                stiffness = Spring.StiffnessMedium
+                            ),
+                            label = "DotWidth"
+                        )
+
                         Box(
                             modifier = Modifier
                                 .padding(horizontal = 3.dp)
-                                .size(if (index == currentStepIndex) 20.dp else 6.dp, 6.dp)
+                                .size(dotWidth, 6.dp)
                                 .clip(RoundedCornerShape(3.dp))
-                                .background(if (index == currentStepIndex) BrandPrimary else BorderStrong)
+                                .background(
+                                    if (isCurrent) BrandPrimary else Color(0x6694A3B8)
+                                )
                         )
                     }
                 }
@@ -279,18 +269,17 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     if (currentStepIndex > 0) {
-                        OutlinedButton(
+                        LiquidGlassButton(
                             onClick = { currentStepIndex-- },
+                            isPrimary = false,
                             modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(6.dp),
-                            border = BorderStroke(1.dp, BorderStrong),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary)
+                            shape = RoundedCornerShape(14.dp)
                         ) {
-                            Text("Back", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Back", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
                         }
                     }
 
-                    Button(
+                    LiquidGlassButton(
                         onClick = {
                             if (currentStepIndex < steps.size - 1) {
                                 currentStepIndex++
@@ -300,13 +289,13 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                                 onFinish()
                             }
                         },
+                        isPrimary = true,
                         modifier = Modifier.weight(if (currentStepIndex > 0) 1.5f else 1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
-                        shape = RoundedCornerShape(6.dp),
+                        shape = RoundedCornerShape(14.dp),
                         contentPadding = PaddingValues(vertical = 12.dp)
                     ) {
                         Text(
-                            text = if (currentStepIndex < steps.size - 1) "Continue" else "Enter Dashboard",
+                            text = if (currentStepIndex < steps.size - 1) "Continue" else "Enter Sanctuary",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = PureWhite

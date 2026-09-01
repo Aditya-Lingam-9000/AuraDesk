@@ -39,291 +39,245 @@ fun InterruptionCard(
         SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(capsule.timestamp))
     }
 
-    Card(
-        shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.cardColors(containerColor = PureWhite),
-        border = BorderStroke(
-            1.dp,
-            if (capsule.isUrgent) AccentRedBorder else BorderSubtle
-        ),
+    LiquidGlassCard(
+        shape = RoundedCornerShape(24.dp),
+        enableGleam = true,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(modifier = Modifier.padding(20.dp)) {
-            // Header Row: Avatar + Visitor info + Urgency Pill
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(AppBg)
-                            .border(1.dp, BorderStrong, CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = capsule.personName.firstOrNull()?.toString()?.uppercase() ?: "V",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp,
-                            color = TextPrimary
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(12.dp))
-
-                    Column {
-                        Text(
-                            text = capsule.personName,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
-                            color = TextPrimary
-                        )
-                        Text(
-                            text = "$formattedTime • ${capsule.durationSec}s visit (${capsule.distanceZone})",
-                            fontSize = 12.sp,
-                            color = TextSecondary
-                        )
-                    }
-                }
-
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    if (capsule.targetComponent.isNotBlank()) {
-                        Surface(
-                            shape = RoundedCornerShape(4.dp),
-                            color = AppBg,
-                            border = BorderStroke(1.dp, BorderSubtle)
-                        ) {
-                            Text(
-                                text = capsule.targetComponent.uppercase(),
-                                color = TextSecondary,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
-                    }
-
-                    Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = if (capsule.isUrgent) AccentRedBg else BorderSubtle,
-                        border = BorderStroke(
-                            1.dp,
-                            if (capsule.isUrgent) AccentRedBorder else BorderStrong
-                        )
-                    ) {
-                        Text(
-                            text = if (capsule.isUrgent) "Urgent" else "Interruption",
-                            color = if (capsule.isUrgent) AccentRed else TextPrimary,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Action Item Box
-            Surface(
-                shape = RoundedCornerShape(6.dp),
-                color = AppBg,
-                border = BorderStroke(1.dp, BorderSubtle),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "ACTION ITEM",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = TextMuted,
-                            letterSpacing = 0.8.sp
-                        )
-
-                        if (capsule.aiDeadline.isNotBlank()) {
-                            Surface(
-                                shape = RoundedCornerShape(4.dp),
-                                color = AccentAmberBg,
-                                border = BorderStroke(1.dp, AccentAmberBorder)
-                            ) {
-                                Text(
-                                    text = capsule.aiDeadline,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = AccentAmber,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    val displayAction = if (capsule.aiActionItem.isNotBlank()) {
-                        capsule.aiActionItem
-                    } else {
-                        capsule.taskSummary
-                    }
-
+        // Header Row: Avatar + Visitor info + Urgency Pill
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(CircleShape)
+                        .background(Color(0x80FFFFFF))
+                        .border(1.2.dp, Color(0xF2FFFFFF), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
                     Text(
-                        text = displayAction,
-                        fontSize = 15.sp,
+                        text = capsule.personName.firstOrNull()?.toString()?.uppercase() ?: "V",
                         fontWeight = FontWeight.Bold,
-                        color = TextPrimary,
-                        lineHeight = 22.sp
-                    )
-
-                    if (capsule.aiUrgencyReason.isNotBlank()) {
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "Context: ${capsule.aiUrgencyReason}",
-                            fontSize = 12.sp,
-                            color = TextSecondary
-                        )
-                    }
-                }
-            }
-
-            // Raw Quote Box
-            if (capsule.rawTranscript.isNotBlank()) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = AppBg,
-                    border = BorderStroke(1.dp, BorderSubtle),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "\"${capsule.rawTranscript}\"",
-                            fontSize = 12.sp,
-                            color = TextSecondary,
-                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Work Context Toggle
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                TextButton(
-                    onClick = { showContextDetails = !showContextDetails },
-                    contentPadding = PaddingValues(0.dp)
-                ) {
-                    Text(
-                        text = if (showContextDetails) "Hide Pre-Interruption Context" else "View Pre-Interruption Context",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 16.sp,
                         color = TextPrimary
                     )
                 }
 
-                IconButton(
-                    onClick = { onDelete(capsule.id) },
-                    modifier = Modifier.size(28.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.DeleteOutline,
-                        contentDescription = "Delete",
-                        tint = AccentRed,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
+                Spacer(modifier = Modifier.width(12.dp))
 
-            AnimatedVisibility(visible = showContextDetails) {
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = AppBg,
-                    border = BorderStroke(1.dp, BorderSubtle),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp, bottom = 8.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Location: ${capsule.contextSnippet}",
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 12.sp,
-                            color = TextPrimary
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Action Buttons
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Button(
-                    onClick = {
-                        val joviSync = com.auradesk.guard.notes.JoviNotesSyncManager.getInstance(context)
-                        joviSync.syncInterruptionToNotes(capsule, launchChooser = true)
-                        onSaveToNotes(capsule.id)
-                    },
-                    modifier = Modifier.weight(1.4f),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (capsule.status == "SAVED_TO_NOTES" || capsule.joviSynced) AccentGreenBg else BrandPrimary
-                    ),
-                    shape = RoundedCornerShape(6.dp),
-                    border = if (capsule.status == "SAVED_TO_NOTES" || capsule.joviSynced) BorderStroke(1.dp, AccentGreenBorder) else null
-                ) {
+                Column {
                     Text(
-                        text = if (capsule.status == "SAVED_TO_NOTES" || capsule.joviSynced) "Saved to Notes" else "Save to Vivo Notes",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (capsule.status == "SAVED_TO_NOTES" || capsule.joviSynced) AccentGreen else PureWhite
+                        text = capsule.personName,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = TextPrimary
                     )
-                }
-
-                OutlinedButton(
-                    onClick = { onDismiss(capsule.id) },
-                    modifier = Modifier.weight(0.8f),
-                    shape = RoundedCornerShape(6.dp),
-                    border = BorderStroke(1.dp, BorderStrong),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary)
-                ) {
-                    Text("Dismiss", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        text = "$formattedTime • ${capsule.durationSec}s visit (${capsule.distanceZone})",
+                        fontSize = 12.sp,
+                        color = TextSecondary
+                    )
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (capsule.targetComponent.isNotBlank()) {
+                    LiquidGlassBadge(
+                        text = capsule.targetComponent.uppercase(),
+                        textColor = TextSecondary,
+                        backgroundColor = Color(0x66FFFFFF),
+                        borderColor = Color(0x99FFFFFF)
+                    )
+                }
 
-            // Shake hint
+                LiquidGlassBadge(
+                    text = if (capsule.isUrgent) "Urgent" else "Interruption",
+                    textColor = if (capsule.isUrgent) AccentRed else TextPrimary,
+                    backgroundColor = if (capsule.isUrgent) AccentRedBg else Color(0x66FFFFFF),
+                    borderColor = if (capsule.isUrgent) AccentRedBorder else Color(0x80CBD5E1)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Action Item Box
+        LiquidGlassTile(modifier = Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Shake device 3 times to incinerate",
+                    text = "ACTION ITEM",
                     fontSize = 11.sp,
-                    color = TextMuted
+                    fontWeight = FontWeight.Bold,
+                    color = TextMuted,
+                    letterSpacing = 0.8.sp
+                )
+
+                if (capsule.aiDeadline.isNotBlank()) {
+                    LiquidGlassBadge(
+                        text = capsule.aiDeadline,
+                        textColor = AccentAmber,
+                        backgroundColor = AccentAmberBg,
+                        borderColor = AccentAmberBorder
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            val displayAction = if (capsule.aiActionItem.isNotBlank()) {
+                capsule.aiActionItem
+            } else {
+                capsule.taskSummary
+            }
+
+            Text(
+                text = displayAction,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary,
+                lineHeight = 22.sp
+            )
+
+            if (capsule.aiUrgencyReason.isNotBlank()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "Context: ${capsule.aiUrgencyReason}",
+                    fontSize = 12.sp,
+                    color = TextSecondary
                 )
             }
+        }
+
+        // Raw Quote Box
+        if (capsule.rawTranscript.isNotBlank()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            LiquidGlassTile(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.padding(2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "\"${capsule.rawTranscript}\"",
+                        fontSize = 12.sp,
+                        color = TextSecondary,
+                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Work Context Toggle
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TextButton(
+                onClick = { showContextDetails = !showContextDetails },
+                contentPadding = PaddingValues(0.dp)
+            ) {
+                Text(
+                    text = if (showContextDetails) "Hide Pre-Interruption Context" else "View Pre-Interruption Context",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TextPrimary
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .liquidPressEffect { onDelete(capsule.id) },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.DeleteOutline,
+                    contentDescription = "Delete",
+                    tint = AccentRed,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+
+        AnimatedVisibility(visible = showContextDetails) {
+            LiquidGlassTile(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp, bottom = 8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Location: ${capsule.contextSnippet}",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 12.sp,
+                        color = TextPrimary
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Action Buttons
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            LiquidGlassButton(
+                onClick = {
+                    val joviSync = com.auradesk.guard.notes.JoviNotesSyncManager.getInstance(context)
+                    joviSync.syncInterruptionToNotes(capsule, launchChooser = true)
+                    onSaveToNotes(capsule.id)
+                },
+                isPrimary = !(capsule.status == "SAVED_TO_NOTES" || capsule.joviSynced),
+                modifier = Modifier.weight(1.4f),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(
+                    text = if (capsule.status == "SAVED_TO_NOTES" || capsule.joviSynced) "Saved to Notes" else "Save to Vivo Notes",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (capsule.status == "SAVED_TO_NOTES" || capsule.joviSynced) AccentGreen else PureWhite
+                )
+            }
+
+            LiquidGlassButton(
+                onClick = { onDismiss(capsule.id) },
+                isPrimary = false,
+                modifier = Modifier.weight(0.8f),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Dismiss", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Shake hint
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Shake device 3 times to incinerate",
+                fontSize = 11.sp,
+                color = TextMuted
+            )
         }
     }
 }
