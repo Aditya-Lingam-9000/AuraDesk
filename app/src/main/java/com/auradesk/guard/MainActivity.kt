@@ -47,7 +47,7 @@ class MainActivity : ComponentActivity() {
             // Shake-to-delete action
             feedbackManager.playIncinerateFeedback()
             runOnUiThread {
-                Toast.makeText(this, "🔥 Shake Detected: Interruption Capsules Incinerated!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Shake detected: All interruption capsules incinerated", Toast.LENGTH_SHORT).show()
             }
             kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
                 repository.deleteAll()
@@ -83,7 +83,7 @@ class MainActivity : ComponentActivity() {
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .background(Color(0xCC090D14))
+                                    .background(Color(0x800F172A))
                                     .padding(20.dp),
                                 contentAlignment = Alignment.Center
                             ) {
@@ -93,7 +93,7 @@ class MainActivity : ComponentActivity() {
                                         onSaveToNotes = { id ->
                                             coroutineScope.launch {
                                                 repository.markSavedToNotes(id)
-                                                Toast.makeText(this@MainActivity, "✅ Saved to Jovi Notes (Sync Ready)", Toast.LENGTH_SHORT).show()
+                                                Toast.makeText(this@MainActivity, "Saved to Vivo Notes", Toast.LENGTH_SHORT).show()
                                             }
                                         },
                                         onDismiss = { id ->

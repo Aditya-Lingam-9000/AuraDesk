@@ -4,10 +4,11 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -22,25 +23,40 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.auradesk.guard.data.InterruptionEntity
+import com.auradesk.guard.data.InterruptionRepository
 import com.auradesk.guard.sensors.FaceDownSensors
 import com.auradesk.guard.service.GuardService
+import com.auradesk.guard.ui.theme.*
 import kotlinx.coroutines.launch
+
+enum class DashboardTab(val title: String, val icon: ImageVector) {
+    OVERVIEW("Overview", Icons.Default.Dashboard),
+    RADAR("Radar", Icons.Default.Radar),
+    VOICE_AI("Voice & AI", Icons.Default.Mic),
+    PRIVACY("Privacy & Power", Icons.Default.Security)
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DashboardScreen(onReplayTour: () -> Unit = {}) {
+fun DashboardScreen(
+    onReplayTour: () -> Unit = {}
+) {
     val context = LocalContext.current
     val isRunning by GuardService.isRunning.collectAsState()
     val isArmed by GuardService.isArmed.collectAsState()
     val sensors by GuardService.liveSensors.collectAsState()
+
+    var selectedTab by remember { mutableStateOf(DashboardTab.OVERVIEW) }
+    val coroutineScope = rememberCoroutineScope()
 
     // Permission launcher for Android 13+ notification and camera/mic
     val permissionsToRequest = buildList {
@@ -51,7 +67,7 @@ fun DashboardScreen(onReplayTour: () -> Unit = {}) {
         add(Manifest.permission.RECORD_AUDIO)
     }
 
-    var hasAllPermissions by remember {
+    var hasPermissions by remember {
         mutableStateOf(permissionsToRequest.all {
             ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
         })
@@ -59,38 +75,34 @@ fun DashboardScreen(onReplayTour: () -> Unit = {}) {
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { results ->
-        hasAllPermissions = results.values.all { it }
+    ) { result ->
+        hasPermissions = result.values.all { it }
     }
 
     Scaffold(
+        containerColor = Slate50,
         topBar = {
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Shield,
-                            contentDescription = null,
-                            tint = if (isArmed) Color(0xFF00E676) else Color(0xFF90CAF9)
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text(
-                            text = "AuraDesk",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 20.sp,
-                            color = Color.White
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(if (isArmed) StatusGreen else Slate400)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = Color(0xFF1E293B)
-                        ) {
+                        Column {
                             Text(
-                                text = "OFFLINE GUARD",
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                fontSize = 10.sp,
+                                text = "AuraDesk",
+                                fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF38BDF8)
+                                color = Slate900
+                            )
+                            Text(
+                                text = if (isArmed) "Focus Shield Armed" else "Standby Mode",
+                                fontSize = 11.sp,
+                                color = if (isArmed) StatusGreen else Slate500
                             )
                         }
                     }
@@ -98,115 +110,1133 @@ fun DashboardScreen(onReplayTour: () -> Unit = {}) {
                 actions = {
                     IconButton(onClick = onReplayTour) {
                         Icon(
-                            imageVector = Icons.Default.Info,
-                            contentDescription = "Replay Onboarding Tour",
-                            tint = Color(0xFF38BDF8)
+                            imageVector = Icons.Default.HelpOutline,
+                            contentDescription = "Quick Tour",
+                            tint = Slate600
+                        )
+                    }
+                    IconButton(onClick = {
+                        val auditor = GuardService.getPrivacyAuditor(context)
+                        auditor.panicPurge {
+                            Toast.makeText(context, "All local records purged", Toast.LENGTH_SHORT).show()
+                        }
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.DeleteSweep,
+                            contentDescription = "Panic Purge",
+                            tint = StatusRed
                         )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFF0F172A)
-                )
+                    containerColor = PureWhite,
+                    titleContentColor = Slate900
+                ),
+                modifier = Modifier.border(BorderStroke(1.dp, Slate200))
             )
         },
-
-        containerColor = Color(0xFF090D16)
-    ) { innerPadding ->
+        bottomBar = {
+            NavigationBar(
+                containerColor = PureWhite,
+                tonalElevation = 0.dp,
+                modifier = Modifier.border(BorderStroke(1.dp, Slate200))
+            ) {
+                DashboardTab.values().forEach { tab ->
+                    NavigationBarItem(
+                        selected = selectedTab == tab,
+                        onClick = { selectedTab = tab },
+                        icon = {
+                            Icon(
+                                imageVector = tab.icon,
+                                contentDescription = tab.title,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        },
+                        label = {
+                            Text(
+                                text = tab.title,
+                                fontSize = 11.sp,
+                                fontWeight = if (selectedTab == tab) FontWeight.Bold else FontWeight.Normal
+                            )
+                        },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = Slate900,
+                            selectedTextColor = Slate900,
+                            indicatorColor = Slate100,
+                            unselectedIconColor = Slate400,
+                            unselectedTextColor = Slate500
+                        )
+                    )
+                }
+            }
+        }
+    ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 16.dp)
-                .verticalScroll(rememberScrollState()),
+                .padding(paddingValues)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Spacer(modifier = Modifier.height(4.dp))
-
-            // Permission Request Banner if needed
-            if (!hasAllPermissions) {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF332005)),
-                    shape = RoundedCornerShape(12.dp),
+            // Permission Banner
+            if (!hasPermissions) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = StatusAmberBg,
+                    border = BorderStroke(1.dp, StatusAmberBorder),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFFBBF24))
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = StatusAmber,
+                                modifier = Modifier.size(18.dp)
+                            )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                "Permissions Needed",
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFFFDE68A)
+                                text = "Camera & Audio permissions required",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = StatusAmber
                             )
                         }
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            "AuraDesk requires notification, camera, and microphone permissions for the offline focus guard.",
-                            fontSize = 13.sp,
-                            color = Color(0xFFF3F4F6)
-                        )
-                        Spacer(modifier = Modifier.height(10.dp))
+
                         Button(
                             onClick = { permissionLauncher.launch(permissionsToRequest.toTypedArray()) },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706))
+                            colors = ButtonDefaults.buttonColors(containerColor = Slate900),
+                            shape = RoundedCornerShape(4.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
                         ) {
-                            Text("Grant Permissions", color = Color.White)
+                            Text("Grant Access", fontSize = 11.sp, color = PureWhite)
                         }
                     }
                 }
             }
 
-            // Main Status Shield Card
-            GuardStatusHeroCard(
-                isRunning = isRunning,
-                isArmed = isArmed,
-                sensors = sensors,
-                onToggleService = {
-                    if (isRunning) {
-                        GuardService.stopService(context)
-                    } else {
-                        GuardService.startService(context)
+            when (selectedTab) {
+                DashboardTab.OVERVIEW -> {
+                    // Main Status Hero Card
+                    GuardStatusHeroCard(
+                        isRunning = isRunning,
+                        isArmed = isArmed,
+                        sensors = sensors,
+                        onToggleService = {
+                            if (isRunning) {
+                                GuardService.stopService(context)
+                            } else {
+                                GuardService.startService(context)
+                            }
+                        }
+                    )
+
+                    // Sensor Fusion Telemetry
+                    SensorFusionTelemetryCard(sensors = sensors, isRunning = isRunning)
+
+                    // Deep Work Detection Card
+                    DeepWorkFocusCard()
+
+                    // Always-On Display Preview Card
+                    AlwaysOnPreviewCard()
+                }
+
+                DashboardTab.RADAR -> {
+                    // Person Radar Vision AI Card
+                    PersonRadarCard()
+
+                    // Sound & Haptic Test Card
+                    SoundHapticsTestCard(context = context)
+                }
+
+                DashboardTab.VOICE_AI -> {
+                    // Audio Pipeline & Vosk Speech-to-Text
+                    AudioCapsuleSttCard()
+
+                    // On-Device Action Synthesizer
+                    LlmCapsuleSynthesizerCard(context = context)
+
+                    // Interruption Capsules (Room DB)
+                    InterruptionCapsulesCard(context = context)
+
+                    // Vivo Office Kit & Jovi Notes Sync
+                    VivoOfficeKitCard(context = context)
+                }
+
+                DashboardTab.PRIVACY -> {
+                    // Battery & Air-Gapped Privacy Card
+                    PrivacyBatteryGuardCard(context = context)
+
+                    // Testing Instructions
+                    TestingInstructionsCard()
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
+}
+
+// -------------------------------------------------------------
+// UI COMPONENTS (Clean, Flat, Professional White Theme)
+// -------------------------------------------------------------
+
+@Composable
+fun GuardStatusHeroCard(
+    isRunning: Boolean,
+    isArmed: Boolean,
+    sensors: FaceDownSensors,
+    onToggleService: () -> Unit
+) {
+    Card(
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = PureWhite),
+        border = BorderStroke(1.dp, if (isArmed) StatusGreenBorder else Slate200),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Shield,
+                        contentDescription = null,
+                        tint = if (isArmed) StatusGreen else Slate800,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text(
+                            text = if (isArmed) "Guard Active & Armed" else if (isRunning) "Guard Service Ready" else "Guard Service Inactive",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = Slate900
+                        )
+                        Text(
+                            text = if (isArmed) "Device face-down • Perimeter actively guarded" else "Place device face-down on desk to arm",
+                            fontSize = 12.sp,
+                            color = Slate500
+                        )
                     }
                 }
+
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = if (isArmed) StatusGreenBg else Slate100,
+                    border = BorderStroke(1.dp, if (isArmed) StatusGreenBorder else Slate300)
+                ) {
+                    Text(
+                        text = if (isArmed) "ARMED" else if (isRunning) "STANDBY" else "OFFLINE",
+                        color = if (isArmed) StatusGreen else Slate700,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(
+                onClick = onToggleService,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isRunning) Slate800 else Slate900
+                ),
+                shape = RoundedCornerShape(6.dp),
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(vertical = 12.dp)
+            ) {
+                Icon(
+                    imageVector = if (isRunning) Icons.Default.Stop else Icons.Default.PlayArrow,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = PureWhite
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = if (isRunning) "Stop Focus Guard Service" else "Start Focus Guard Service",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = PureWhite
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun SensorFusionTelemetryCard(sensors: FaceDownSensors, isRunning: Boolean) {
+    Card(
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = PureWhite),
+        border = BorderStroke(1.dp, Slate200),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Sensors, contentDescription = null, tint = Slate800, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Optical & Inertial Telemetry", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Slate900)
+                }
+
+                Text(
+                    text = if (isRunning) "Streaming (50Hz)" else "Idle",
+                    fontSize = 11.sp,
+                    color = if (isRunning) StatusGreen else Slate400,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SensorMetricTile("Proximity", "${String.format("%.1f", sensors.proximityCm)} cm", sensors.isProximityNear, Modifier.weight(1f))
+                SensorMetricTile("Ambient Light", "${String.format("%.0f", sensors.lightLux)} lux", sensors.isLightDark, Modifier.weight(1f))
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SensorMetricTile("Gravity Z", "${String.format("%.2f", sensors.accelZ)} m/s²", sensors.isZDownward, Modifier.weight(1f))
+                SensorMetricTile("Gyro Drift", "${String.format("%.3f", sensors.gyroMagnitude)} rad/s", sensors.isGyroStable, Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+fun SensorMetricTile(label: String, value: String, isPassing: Boolean, modifier: Modifier = Modifier) {
+    Surface(
+        shape = RoundedCornerShape(6.dp),
+        color = Slate50,
+        border = BorderStroke(1.dp, if (isPassing) StatusGreenBorder else Slate200),
+        modifier = modifier
+    ) {
+        Column(modifier = Modifier.padding(10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(label, fontSize = 11.sp, color = Slate500)
+                Icon(
+                    imageVector = if (isPassing) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                    contentDescription = null,
+                    tint = if (isPassing) StatusGreen else Slate300,
+                    modifier = Modifier.size(12.dp)
+                )
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(value, fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace, color = Slate900)
+        }
+    }
+}
+
+@Composable
+fun DeepWorkFocusCard() {
+    val deepWorkState by GuardService.liveDeepWork.collectAsState()
+
+    Card(
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = PureWhite),
+        border = BorderStroke(1.dp, Slate200),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Speed, contentDescription = null, tint = Slate800, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Deep Work Focus Analysis", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Slate900)
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = if (deepWorkState.isDeepWork) StatusGreenBg else Slate100,
+                    border = BorderStroke(1.dp, if (deepWorkState.isDeepWork) StatusGreenBorder else Slate300)
+                ) {
+                    Text(
+                        text = "${deepWorkState.focusScore}% FOCUS",
+                        color = if (deepWorkState.isDeepWork) StatusGreen else Slate700,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+                text = "Monitors micro-transient acoustic typing cadence and quiet study sessions to establish focus metrics.",
+                fontSize = 12.sp,
+                color = Slate600
             )
 
-            // Live Sensor Fusion Telemetry
-            SensorFusionTelemetryCard(sensors = sensors, isRunning = isRunning)
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // Phase 4: Deep Work Detection Card
-            DeepWorkFocusCard()
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = Slate50,
+                    border = BorderStroke(1.dp, Slate200),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Text("Typing Cadence", fontSize = 11.sp, color = Slate500)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text("${String.format("%.0f", deepWorkState.typingCadenceBpm)} BPM", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Slate900)
+                    }
+                }
 
-            // Phase 5: Interruption Capsules & Haptic Whisper Card
-            InterruptionCapsulesCard(context = context)
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = Slate50,
+                    border = BorderStroke(1.dp, Slate200),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Text("Environment Mode", fontSize = 11.sp, color = Slate500)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(deepWorkState.environmentProfile.label, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Slate900)
+                    }
+                }
+            }
 
-            // Phase 6: Audio Pipeline & Vosk Offline Speech-to-Text Card
-            AudioCapsuleSttCard()
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // Phase 7: On-Device LLM & Action Synthesizer Card
-            LlmCapsuleSynthesizerCard(context = context)
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = { GuardService.simulateDeepWork(true, 92, 140f) },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(6.dp),
+                    border = BorderStroke(1.dp, Slate300)
+                ) {
+                    Text("Simulate Coding", fontSize = 11.sp, color = Slate700)
+                }
 
-            // Phase 8: Vivo Office Kit & Jovi Notes Sync Card
-            VivoOfficeKitCard(context = context)
+                OutlinedButton(
+                    onClick = { GuardService.simulateDeepWork(false, 15, 0f) },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(6.dp),
+                    border = BorderStroke(1.dp, Slate300)
+                ) {
+                    Text("Simulate Idle", fontSize = 11.sp, color = Slate700)
+                }
+            }
+        }
+    }
+}
 
-            // Phase 9: Battery & Air-Gapped Privacy Card
-            PrivacyBatteryGuardCard(context = context)
+@Composable
+fun PersonRadarCard() {
+    val radar by GuardService.liveRadar.collectAsState()
+    var showViewfinder by remember { mutableStateOf(false) }
 
-            // Phase 3: Person Approaching Radar Card
+    Card(
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = PureWhite),
+        border = BorderStroke(1.dp, Slate200),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Radar, contentDescription = null, tint = Slate800, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Person Approaching Radar (Vision AI)", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Slate900)
+                }
 
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = if (radar.isPersonDetected) StatusGreenBg else Slate100,
+                    border = BorderStroke(1.dp, if (radar.isPersonDetected) StatusGreenBorder else Slate300)
+                ) {
+                    Text(
+                        text = if (radar.isPersonDetected) "SUBJECT DETECTED" else "NO SUBJECT",
+                        color = if (radar.isPersonDetected) StatusGreen else Slate600,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
 
+            Spacer(modifier = Modifier.height(10.dp))
 
-            PersonRadarCard()
+            Text(
+                text = "Tracks human proximity via ML Kit biometric span inverse geometry (5m perimeter to 0.5m desk arrival).",
+                fontSize = 12.sp,
+                color = Slate600
+            )
 
-            // Sound & Haptic Test Card
-            SoundHapticsTestCard(context = context)
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // Phase 2: Always-On Display Preview Card
-            AlwaysOnPreviewCard()
+            // Radar Metric Row
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = Slate50,
+                border = BorderStroke(1.dp, Slate200),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("Current Zone", fontSize = 11.sp, color = Slate500)
+                        Text(radar.zone.label, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Slate900)
+                    }
 
-            // Test Verification Instructions
-            TestingInstructionsCard()
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text("Estimated Distance", fontSize = 11.sp, color = Slate500)
+                        Text("${String.format("%.1f", radar.distanceMeters)} m", fontSize = 14.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace, color = Slate900)
+                    }
+                }
+            }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Viewfinder Toggle
+            Button(
+                onClick = { showViewfinder = !showViewfinder },
+                colors = ButtonDefaults.buttonColors(containerColor = Slate900),
+                shape = RoundedCornerShape(6.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Videocam,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = PureWhite
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(if (showViewfinder) "Close Camera Feed" else "Open Camera Viewfinder", fontSize = 12.sp, color = PureWhite)
+            }
+
+            if (showViewfinder) {
+                Spacer(modifier = Modifier.height(12.dp))
+                CameraRadarViewfinder(onClose = { showViewfinder = false })
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Simulation Controls
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = { GuardService.simulateRadar(2.0f, true, 32.0f) },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(6.dp),
+                    border = BorderStroke(1.dp, Slate300)
+                ) {
+                    Text("Simulate 2m Approach", fontSize = 10.sp, color = Slate700)
+                }
+
+                OutlinedButton(
+                    onClick = { GuardService.simulateRadar(0.5f, false, 0.0f) },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(6.dp),
+                    border = BorderStroke(1.dp, Slate300)
+                ) {
+                    Text("Simulate 0.5m Desk", fontSize = 10.sp, color = Slate700)
+                }
+
+                OutlinedButton(
+                    onClick = { GuardService.clearRadar() },
+                    modifier = Modifier.weight(0.7f),
+                    shape = RoundedCornerShape(6.dp),
+                    border = BorderStroke(1.dp, Slate300)
+                ) {
+                    Text("Clear", fontSize = 10.sp, color = Slate700)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AudioCapsuleSttCard() {
+    val audioState by GuardService.liveAudioCapsule.collectAsState()
+    val context = LocalContext.current
+
+    Card(
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = PureWhite),
+        border = BorderStroke(1.dp, Slate200),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Mic, contentDescription = null, tint = Slate800, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Voice VAD & Offline Transcription", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Slate900)
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = if (audioState.isRecording) StatusRedBg else Slate100,
+                    border = BorderStroke(1.dp, if (audioState.isRecording) StatusRedBorder else Slate300)
+                ) {
+                    Text(
+                        text = if (audioState.isRecording) "RECORDING (${audioState.remainingSeconds}s)" else audioState.capsuleStatus,
+                        color = if (audioState.isRecording) StatusRed else Slate700,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+                text = "Autonomous 10-second capsule recording with keyword spotter (Arjun, Hey, Excuse me) and local transcription.",
+                fontSize = 12.sp,
+                color = Slate600
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Transcript Box
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = Slate50,
+                border = BorderStroke(1.dp, Slate200),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text("Latest Transcript", fontSize = 11.sp, color = Slate500)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = audioState.livePartialTranscript.ifBlank { "No audio transcript captured" },
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Slate900
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = { GuardService.startAudioCapsule(context, 10) },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = Slate900),
+                    shape = RoundedCornerShape(6.dp)
+                ) {
+                    Icon(Icons.Default.Mic, contentDescription = null, modifier = Modifier.size(14.dp), tint = PureWhite)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Record 10s Capsule", fontSize = 11.sp, color = PureWhite)
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        GuardService.simulateSpeechCapsule(
+                            context = context,
+                            speakerName = "Rahul from Backend",
+                            speechText = "Hey Arjun, can you review PR 142 before the 4 PM deployment sprint demo?",
+                            durationSec = 6L,
+                            isUrgent = true
+                        )
+                    },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(6.dp),
+                    border = BorderStroke(1.dp, Slate300)
+                ) {
+                    Text("Simulate Rahul Speech", fontSize = 11.sp, color = Slate700)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun LlmCapsuleSynthesizerCard(context: Context) {
+    val synthesizedTask by GuardService.liveSynthesizedTask.collectAsState()
+
+    Card(
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = PureWhite),
+        border = BorderStroke(1.dp, Slate200),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Psychology, contentDescription = null, tint = Slate800, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("On-Device LLM Action Synthesizer", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Slate900)
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = Slate100,
+                    border = BorderStroke(1.dp, Slate300)
+                ) {
+                    Text(
+                        text = "ON-DEVICE NPU",
+                        color = Slate700,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+                text = "Distills raw conversational speech into structured action items, deadlines, priority levels, and system components.",
+                fontSize = 12.sp,
+                color = Slate600
+            )
+
+            if (synthesizedTask != null) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = Slate50,
+                    border = BorderStroke(1.dp, Slate200),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Extracted Action Item", fontSize = 11.sp, color = Slate500)
+                            Text(synthesizedTask!!.urgencyLevel.label, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Slate700)
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(synthesizedTask!!.actionItem, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Slate900)
+
+                        if (synthesizedTask!!.deadlineOrTime != null) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text("Deadline: ${synthesizedTask!!.deadlineOrTime}", fontSize = 12.sp, color = StatusAmber, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = {
+                        GuardService.synthesizePrompt(
+                            context = context,
+                            rawText = "Excuse me Arjun, production auth login is failing with 500 error, please check immediately!",
+                            speakerName = "Priya Tech Lead"
+                        )
+                    },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(6.dp),
+                    border = BorderStroke(1.dp, Slate300)
+                ) {
+                    Text("Test Critical Outage Prompt", fontSize = 10.sp, color = Slate700)
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        GuardService.synthesizePrompt(
+                            context = context,
+                            rawText = "Hi, can you update the Figma dashboard design by tomorrow morning?",
+                            speakerName = "Ananya Designer"
+                        )
+                    },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(6.dp),
+                    border = BorderStroke(1.dp, Slate300)
+                ) {
+                    Text("Test Design Task Prompt", fontSize = 10.sp, color = Slate700)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun InterruptionCapsulesCard(context: Context) {
+    val repository = remember { InterruptionRepository.getInstance(context) }
+    val capsules by repository.allInterruptions.collectAsState()
+    val coroutineScope = rememberCoroutineScope()
+
+    Card(
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = PureWhite),
+        border = BorderStroke(1.dp, Slate200),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.History, contentDescription = null, tint = Slate800, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Interruption Capsules (Room DB)", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Slate900)
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = Slate100,
+                    border = BorderStroke(1.dp, Slate300)
+                ) {
+                    Text(
+                        text = "${capsules.size} LOGGED",
+                        color = Slate700,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            if (capsules.isEmpty()) {
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = Slate50,
+                    border = BorderStroke(1.dp, Slate200),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = StatusGreen, modifier = Modifier.size(24.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text("No Interruption Capsules Stored", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Slate800)
+                        Text("Desk sanctuary clean • 100% on-device local storage", fontSize = 11.sp, color = Slate500)
+                    }
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    capsules.take(4).forEach { capsule ->
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Slate50,
+                            border = BorderStroke(1.dp, if (capsule.isUrgent) StatusRedBorder else Slate200),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "${capsule.personName} (${capsule.distanceZone})",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        color = Slate900
+                                    )
+                                    Text(
+                                        text = if (capsule.aiActionItem.isNotBlank()) capsule.aiActionItem else capsule.taskSummary,
+                                        fontSize = 12.sp,
+                                        color = Slate600,
+                                        maxLines = 2
+                                    )
+                                }
+
+                                IconButton(
+                                    onClick = { coroutineScope.launch { repository.delete(capsule.id) } },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(Icons.Default.DeleteOutline, contentDescription = "Delete", tint = StatusRed, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = {
+                        coroutineScope.launch {
+                            repository.insert(
+                                InterruptionEntity(
+                                    personName = "Rahul from Backend",
+                                    taskSummary = "Review PR 142 API schema changes before 4 PM deployment",
+                                    aiActionItem = "Review PR 142 API schema changes",
+                                    aiDeadline = "Before 4 PM",
+                                    aiUrgencyReason = "Deployment blocker",
+                                    targetComponent = "Backend API",
+                                    rawTranscript = "Hey, please review PR 142 API schema changes before 4 PM deployment",
+                                    hasVoiceTranscript = true,
+                                    contextSnippet = "Editing auth/TokenManager.kt line 88",
+                                    distanceZone = "0.5m (At Desk)",
+                                    durationSec = 6L,
+                                    isUrgent = true
+                                )
+                            )
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(6.dp),
+                    border = BorderStroke(1.dp, Slate300)
+                ) {
+                    Text("Add Sample Capsule", fontSize = 11.sp, color = Slate700)
+                }
+
+                OutlinedButton(
+                    onClick = { coroutineScope.launch { repository.deleteAll() } },
+                    modifier = Modifier.weight(0.7f),
+                    shape = RoundedCornerShape(6.dp),
+                    border = BorderStroke(1.dp, StatusRedBorder)
+                ) {
+                    Text("Clear All", fontSize = 11.sp, color = StatusRed)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun VivoOfficeKitCard(context: Context) {
+    val joviManager = remember { GuardService.getJoviNotesSyncManager(context) }
+    val syncState by joviManager.syncState.collectAsState()
+
+    Card(
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = PureWhite),
+        border = BorderStroke(1.dp, Slate200),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Sync, contentDescription = null, tint = Slate800, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Vivo Office Kit & Jovi Notes Sync", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Slate900)
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = if (syncState.isAutoSyncEnabled) StatusGreenBg else Slate100,
+                    border = BorderStroke(1.dp, if (syncState.isAutoSyncEnabled) StatusGreenBorder else Slate300)
+                ) {
+                    Text(
+                        text = if (syncState.isAutoSyncEnabled) "AUTO-SYNC ON" else "OFF",
+                        color = if (syncState.isAutoSyncEnabled) StatusGreen else Slate600,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+                text = "Exports interruption task payloads directly to Vivo Notes (com.vivo.notes) and system clipboard.",
+                fontSize = 12.sp,
+                color = Slate600
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Enable Automatic Jovi Sync", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Slate800)
+                Switch(
+                    checked = syncState.isAutoSyncEnabled,
+                    onCheckedChange = { joviManager.setAutoSyncEnabled(it) },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = PureWhite,
+                        checkedTrackColor = Slate900,
+                        uncheckedThumbColor = Slate400,
+                        uncheckedTrackColor = Slate200
+                    )
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun PrivacyBatteryGuardCard(context: Context) {
+    val powerManager = remember { GuardService.getPowerManagerGuard(context) }
+    val telemetry by powerManager.telemetry.collectAsState()
+    val auditor = remember { GuardService.getPrivacyAuditor(context) }
+    val auditReport by auditor.auditReport.collectAsState()
+
+    Card(
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = PureWhite),
+        border = BorderStroke(1.dp, Slate200),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Security, contentDescription = null, tint = Slate800, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Battery & Air-Gapped Privacy", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Slate900)
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = StatusGreenBg,
+                    border = BorderStroke(1.dp, StatusGreenBorder)
+                ) {
+                    Text(
+                        text = "0 BYTES NETWORK",
+                        color = StatusGreen,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+                text = "Zero outgoing internet capabilities. Operates 100% offline in airplane mode with under 3% per hour drain.",
+                fontSize = 12.sp,
+                color = Slate600
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = Slate50,
+                    border = BorderStroke(1.dp, Slate200),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Text("Battery Level", fontSize = 11.sp, color = Slate500)
+                        Text("${telemetry.batteryPercent}% (${telemetry.estimatedDrainPerHour}%/hr)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Slate900)
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = Slate50,
+                    border = BorderStroke(1.dp, Slate200),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Text("Network Sockets", fontSize = 11.sp, color = Slate500)
+                        Text("0 Active (Air-Gapped)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = StatusGreen)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SoundHapticsTestCard(context: Context) {
+    val feedbackManager = remember { com.auradesk.guard.utils.FeedbackManager(context) }
+
+    Card(
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = PureWhite),
+        border = BorderStroke(1.dp, Slate200),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Vibration, contentDescription = null, tint = Slate800, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Subconscious Haptic Motor Cues", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Slate900)
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+                text = "Precision vibration motor rhythms communicate approach distance silently through desk surfaces.",
+                fontSize = 12.sp,
+                color = Slate600
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = { feedbackManager.playHapticWhisperLow() },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(6.dp),
+                    border = BorderStroke(1.dp, Slate300)
+                ) {
+                    Text("Low (80ms)", fontSize = 11.sp, color = Slate700)
+                }
+
+                OutlinedButton(
+                    onClick = { feedbackManager.playHapticWhisperMedium() },
+                    modifier = Modifier.weight(1.2f),
+                    shape = RoundedCornerShape(6.dp),
+                    border = BorderStroke(1.dp, Slate300)
+                ) {
+                    Text("Mid (2m Approach)", fontSize = 11.sp, color = Slate700)
+                }
+
+                OutlinedButton(
+                    onClick = { feedbackManager.playHapticWhisperUrgent() },
+                    modifier = Modifier.weight(1.2f),
+                    shape = RoundedCornerShape(6.dp),
+                    border = BorderStroke(1.dp, StatusRedBorder)
+                ) {
+                    Text("Urgent (0.5m)", fontSize = 11.sp, color = StatusRed)
+                }
+            }
         }
     }
 }
@@ -225,1117 +1255,36 @@ fun AlwaysOnPreviewCard() {
     }
 
     Card(
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF131C2E)),
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = PureWhite),
+        border = BorderStroke(1.dp, Slate200),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Shield, contentDescription = null, tint = Color(0xFF00E676))
+                Icon(Icons.Default.Visibility, contentDescription = null, tint = Slate800, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    "Phase 2: Always-On Display (AOD)",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
-                    color = Color.White
-                )
+                Text("Always-On Focus Screen (AOD)", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Slate900)
             }
 
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                "When your phone is face-down on your desk, the screen automatically switches to the OLED Deep Black (#090D14) Always-On mode showing the pulsating green shield, live deep work timer, and return time.",
+                text = "When face-down, the display switches to the minimalist OLED black mode to conserve energy while displaying the live session timer.",
                 fontSize = 12.sp,
-                color = Color(0xFF94A3B8)
+                color = Slate600
             )
 
             Spacer(modifier = Modifier.height(12.dp))
 
             Button(
                 onClick = { showPreview = true },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F2E1E)),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF00E676)),
-                shape = RoundedCornerShape(10.dp)
+                colors = ButtonDefaults.buttonColors(containerColor = Slate900),
+                shape = RoundedCornerShape(6.dp),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Icon(Icons.Default.Shield, contentDescription = null, tint = Color(0xFF00E676), modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("👀 Preview Always-On Display", color = Color(0xFF00E676), fontWeight = FontWeight.Bold)
+                Text("Launch AOD Screen Preview", fontSize = 12.sp, color = PureWhite)
             }
-        }
-    }
-}
-
-@Composable
-fun GuardStatusHeroCard(
-    isRunning: Boolean,
-    isArmed: Boolean,
-    sensors: FaceDownSensors,
-    onToggleService: () -> Unit
-) {
-    val borderColor by animateColorAsState(
-        targetValue = when {
-            isArmed -> Color(0xFF00E676)
-            isRunning -> Color(0xFF38BDF8)
-            else -> Color(0xFF334155)
-        }, label = "borderColor"
-    )
-
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF131C2E)),
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(2.dp, borderColor, RoundedCornerShape(16.dp))
-    ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(72.dp)
-                    .clip(CircleShape)
-                    .background(
-                        when {
-                            isArmed -> Color(0x3300E676)
-                            isRunning -> Color(0x3338BDF8)
-                            else -> Color(0x2264748B)
-                        }
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = when {
-                        isArmed -> Icons.Default.Shield
-                        isRunning -> Icons.Default.Lock
-                        else -> Icons.Default.LockOpen
-                    },
-                    contentDescription = null,
-                    modifier = Modifier.size(38.dp),
-                    tint = when {
-                        isArmed -> Color(0xFF00E676)
-                        isRunning -> Color(0xFF38BDF8)
-                        else -> Color(0xFF94A3B8)
-                    }
-                )
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            Text(
-                text = when {
-                    isArmed -> "🛡️ GUARD ARMED"
-                    isRunning -> "STANDBY: FLIP PHONE"
-                    else -> "GUARD SERVICE OFF"
-                },
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Black,
-                color = when {
-                    isArmed -> Color(0xFF00E676)
-                    isRunning -> Color(0xFF38BDF8)
-                    else -> Color(0xFF94A3B8)
-                }
-            )
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Text(
-                text = when {
-                    isArmed -> "Phone face-down on desk • Deep work protected"
-                    isRunning -> "Place phone face-down on your desk to arm"
-                    else -> "Turn on Guard Service to enable background protection"
-                },
-                fontSize = 13.sp,
-                color = Color(0xFFCBD5E1)
-            )
-
-            // Arming Proof Badge
-            if (sensors.totalArmSessions > 0) {
-                Spacer(modifier = Modifier.height(10.dp))
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = Color(0x2200E676),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF00E676))
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF00E676), modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Armed ${sensors.totalArmSessions}x • Last Session: ${sensors.lastArmedDurationSec}s",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF00E676)
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Button(
-                onClick = onToggleService,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isRunning) Color(0xFFEF4444) else Color(0xFF2563EB)
-                ),
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Icon(
-                    imageVector = if (isRunning) Icons.Default.Stop else Icons.Default.PlayArrow,
-                    contentDescription = null,
-                    tint = Color.White
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = if (isRunning) "Stop Guard Service" else "Start Guard Service",
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun SensorFusionTelemetryCard(sensors: FaceDownSensors, isRunning: Boolean) {
-    Card(
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF131C2E)),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Live Sensor Fusion Telemetry",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
-                    color = Color.White
-                )
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = if (isRunning) Color(0x3300E676) else Color(0x33EF4444)
-                ) {
-                    Text(
-                        text = if (isRunning) "LIVE" else "PAUSED",
-                        color = if (isRunning) Color(0xFF00E676) else Color(0xFFEF4444),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            SensorRow(
-                title = "1. Proximity",
-                value = "${String.format("%.1f", sensors.proximityCm)} cm (${if (sensors.isProximityNear) "Near" else "Far"})",
-                isSatisfied = sensors.isProximityNear,
-                criteria = "< 1.5 cm (${sensors.proximityType})"
-            )
-
-            SensorRow(
-                title = "2. Ambient Light",
-                value = "${String.format("%.1f", sensors.lightLux)} lux",
-                isSatisfied = sensors.isLightDark,
-                criteria = "< 2.0 lux (Dark desk)"
-            )
-
-            SensorRow(
-                title = "3. Accel Z (Screen)",
-                value = "${String.format("%.2f", sensors.accelZ)} m/s²",
-                isSatisfied = sensors.isZDownward,
-                criteria = "≤ -7.5 m/s² (Face Down)"
-            )
-
-            SensorRow(
-                title = "4. Gyroscope Stability",
-                value = "${String.format("%.3f", sensors.gyroMagnitude)} rad/s",
-                isSatisfied = sensors.isGyroStable,
-                criteria = "< 0.25 rad/s"
-            )
-
-            HorizontalDivider(color = Color(0xFF1E293B), modifier = Modifier.padding(vertical = 10.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Stability Hold Time",
-                    color = Color(0xFF94A3B8),
-                    fontSize = 13.sp
-                )
-                Text(
-                    text = "${sensors.stabilityDurationMs} ms / 1000 ms",
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace,
-                    color = if (sensors.stabilityDurationMs >= 1000L) Color(0xFF00E676) else Color(0xFFFBBF24),
-                    fontSize = 13.sp
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun SoundHapticsTestCard(context: Context) {
-    val feedbackManager = remember { com.auradesk.guard.utils.FeedbackManager(context) }
-
-    Card(
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF131C2E)),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.NotificationsActive, contentDescription = null, tint = Color(0xFF38BDF8))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    "Sound & Haptic Test Triggers",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
-                    color = Color.White
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                OutlinedButton(
-                    onClick = { feedbackManager.playArmFeedback() },
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF00E676))
-                ) {
-                    Text("🔔 Test Arm Tone", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                }
-
-                OutlinedButton(
-                    onClick = { feedbackManager.playDisarmFeedback() },
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF38BDF8))
-                ) {
-                    Text("🔕 Test Disarm Tone", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun PersonRadarCard() {
-    val radar by GuardService.liveRadar.collectAsState()
-
-    Card(
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF131C2E)),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f).padding(end = 8.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Radar,
-                        contentDescription = null,
-                        tint = Color(radar.zone.colorHex)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        "Person Radar (Vision AI)",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
-                        color = Color.White,
-                        maxLines = 1
-                    )
-                }
-
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = Color(radar.zone.colorHex).copy(alpha = 0.2f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(radar.zone.colorHex))
-                ) {
-                    Text(
-                        text = radar.zone.label,
-                        color = Color(radar.zone.colorHex),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        softWrap = false,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // Radar Distance Rings Visualizer
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(140.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFF090E17)),
-                contentAlignment = Alignment.Center
-            ) {
-                // Ring 5m
-                Box(
-                    modifier = Modifier
-                        .size(130.dp)
-                        .border(1.dp, Color(0xFF1E293B), CircleShape)
-                )
-                // Ring 2m
-                Box(
-                    modifier = Modifier
-                        .size(85.dp)
-                        .border(1.dp, Color(0xFF334155), CircleShape)
-                )
-                // Ring 0.5m (Close Interruption)
-                Box(
-                    modifier = Modifier
-                        .size(45.dp)
-                        .border(1.dp, Color(0x66EF4444), CircleShape)
-                )
-                // Center Desk Reference
-                Box(
-                    modifier = Modifier
-                        .size(10.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF00E676))
-                )
-
-                // Subject Blip if detected
-                if (radar.isPersonDetected) {
-                    val blipSize = when (radar.zone) {
-                        com.auradesk.guard.vision.RadarZone.CLOSE_05M -> 30.dp
-                        com.auradesk.guard.vision.RadarZone.MID_2M -> 20.dp
-                        com.auradesk.guard.vision.RadarZone.FAR_5M -> 14.dp
-                        com.auradesk.guard.vision.RadarZone.NONE -> 0.dp
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .size(blipSize)
-                            .clip(CircleShape)
-                            .background(Color(radar.zone.colorHex).copy(alpha = 0.8f))
-                            .border(2.dp, Color.White, CircleShape)
-                    )
-                } else {
-                    Text("Area Clear • No Approaching Subject", fontSize = 11.sp, color = Color(0xFF475569))
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Approaching Warning Banner
-            if (radar.isApproaching) {
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = Color(0x33FBBF24),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFBBF24)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Default.DirectionsRun, contentDescription = null, tint = Color(0xFFFBBF24), modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "⚠️ Subject Approaching Desk (+${String.format("%.1f", radar.growthRatePercentPerSec)}%/s)",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFFFDE68A)
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(10.dp))
-            }
-
-            // Metrics Row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column {
-                    Text("Distance", fontSize = 11.sp, color = Color(0xFF64748B))
-                    Text(
-                        text = if (radar.isPersonDetected) "${String.format("%.1f", radar.distanceMeters)} m" else "--",
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        color = Color.White,
-                        fontSize = 14.sp
-                    )
-                }
-
-                Column {
-                    Text("Box Growth Rate", fontSize = 11.sp, color = Color(0xFF64748B))
-                    Text(
-                        text = if (radar.isPersonDetected) "${String.format("%.1f", radar.growthRatePercentPerSec)}%/s" else "--",
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        color = if (radar.isApproaching) Color(0xFFFBBF24) else Color(0xFF94A3B8),
-                        fontSize = 14.sp
-                    )
-                }
-
-                Column {
-                    Text("AI Confidence", fontSize = 11.sp, color = Color(0xFF64748B))
-                    Text(
-                        text = if (radar.isPersonDetected) "${(radar.confidence * 100).toInt()}%" else "--",
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        color = Color(0xFF38BDF8),
-                        fontSize = 14.sp
-                    )
-                }
-            }
-
-            var isCameraLiveOpen by remember { mutableStateOf(false) }
-
-            // Live Camera Viewfinder Toggle Button
-            Button(
-                onClick = { isCameraLiveOpen = !isCameraLiveOpen },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isCameraLiveOpen) Color(0xFF1E293B) else Color(0xFF0F766E)
-                ),
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.CameraAlt,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = if (isCameraLiveOpen) "Hide Live Camera Feed" else "📷 Open Real-Time Camera Viewfinder",
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
-            }
-
-            if (isCameraLiveOpen) {
-                Spacer(modifier = Modifier.height(12.dp))
-                CameraRadarViewfinder(onClose = { isCameraLiveOpen = false })
-            }
-
-            HorizontalDivider(color = Color(0xFF1E293B), modifier = Modifier.padding(vertical = 10.dp))
-
-            // Simulation Trigger Chips for Testing & Demo Stage
-            Text(
-                text = "Simulation & Stage Demo Triggers:",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color(0xFF94A3B8)
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                OutlinedButton(
-                    onClick = { GuardService.simulateRadar(5.0f, isApproaching = false) },
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text("5m Far", fontSize = 10.sp)
-                }
-
-                OutlinedButton(
-                    onClick = { GuardService.simulateRadar(2.0f, isApproaching = true, growthRate = 28.5f) },
-                    modifier = Modifier.weight(1.3f),
-                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
-                    shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFBBF24))
-                ) {
-                    Text("🏃 2m Approach", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                }
-
-                OutlinedButton(
-                    onClick = { GuardService.simulateRadar(0.5f, isApproaching = true, growthRate = 65.0f) },
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
-                    shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFEF4444))
-                ) {
-                    Text("🛑 0.5m", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                }
-
-                OutlinedButton(
-                    onClick = { GuardService.clearRadar() },
-                    modifier = Modifier.weight(0.8f),
-                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text("Clear", fontSize = 10.sp)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun DeepWorkFocusCard() {
-    val deepWork by GuardService.liveDeepWork.collectAsState()
-    val themeColor = when {
-        deepWork.isDeepWork -> Color(0xFF00E676)
-        deepWork.focusScore >= 30 -> Color(0xFFFBBF24)
-        else -> Color(0xFF64748B)
-    }
-
-    Card(
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF131C2E)),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f).padding(end = 8.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Bolt,
-                        contentDescription = null,
-                        tint = themeColor
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        "Deep Work Focus Engine",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
-                        color = Color.White,
-                        maxLines = 1
-                    )
-                }
-
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = themeColor.copy(alpha = 0.2f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, themeColor)
-                ) {
-                    Text(
-                        text = if (deepWork.isDeepWork) "DEEP WORK ACTIVE" else "RAMPING UP",
-                        color = themeColor,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        softWrap = false,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // Focus Score Bar
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text("Focus Score", fontSize = 12.sp, color = Color(0xFF94A3B8))
-                    Text(
-                        "${deepWork.focusScore}%",
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        color = themeColor,
-                        fontSize = 13.sp
-                    )
-                }
-                Spacer(modifier = Modifier.height(6.dp))
-                LinearProgressIndicator(
-                    progress = { (deepWork.focusScore / 100f).coerceIn(0f, 1f) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(8.dp)
-                        .clip(RoundedCornerShape(4.dp)),
-                    color = themeColor,
-                    trackColor = Color(0xFF1E293B)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Metrics Row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column {
-                    Text("Cadence", fontSize = 11.sp, color = Color(0xFF64748B))
-                    Text(
-                        text = "${String.format("%.0f", deepWork.typingCadenceBpm)} BPM",
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        color = Color.White,
-                        fontSize = 13.sp
-                    )
-                }
-
-                Column {
-                    Text("Noise Floor", fontSize = 11.sp, color = Color(0xFF64748B))
-                    Text(
-                        text = "${String.format("%.1f", deepWork.noiseFloorDb)} dB",
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        color = Color(0xFFCBD5E1),
-                        fontSize = 13.sp
-                    )
-                }
-
-                Column {
-                    Text("Focus Time", fontSize = 11.sp, color = Color(0xFF64748B))
-                    Text(
-                        text = "${deepWork.uninterruptedFocusDurationSec}s",
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        color = Color(0xFF38BDF8),
-                        fontSize = 13.sp
-                    )
-                }
-            }
-
-            HorizontalDivider(color = Color(0xFF1E293B), modifier = Modifier.padding(vertical = 10.dp))
-
-            // Environment Profile Chips
-            Text(
-                text = "Environment Profile:",
-                fontSize = 11.sp,
-                color = Color(0xFF94A3B8)
-            )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                val profiles = listOf(
-                    com.auradesk.guard.focus.EnvironmentProfile.QUIET_LAPTOP to "Quiet Laptop",
-                    com.auradesk.guard.focus.EnvironmentProfile.LIBRARY_SILENCE to "Silent Study",
-                    com.auradesk.guard.focus.EnvironmentProfile.AUTO_ADAPTIVE to "Auto"
-                )
-
-                profiles.forEach { (profile, label) ->
-                    val isSelected = deepWork.environmentProfile == profile
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = if (isSelected) Color(0xFF0F766E) else Color(0xFF1E293B),
-                        border = androidx.compose.foundation.BorderStroke(
-                            1.dp,
-                            if (isSelected) Color(0xFF00E676) else Color(0xFF334155)
-                        ),
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(8.dp))
-                    ) {
-                        Button(
-                            onClick = { GuardService.setEnvironmentProfile(profile) },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
-                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
-                        ) {
-                            Text(
-                                text = label,
-                                fontSize = 10.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isSelected) Color.White else Color(0xFF94A3B8)
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Simulation Triggers
-            Text(
-                text = "Stage Demo Simulation Triggers:",
-                fontSize = 11.sp,
-                color = Color(0xFF94A3B8)
-            )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                OutlinedButton(
-                    onClick = {
-                        GuardService.simulateDeepWork(
-                            isDeepWork = true,
-                            score = 88,
-                            cadenceBpm = 140f,
-                            profile = com.auradesk.guard.focus.EnvironmentProfile.QUIET_LAPTOP
-                        )
-                    },
-                    modifier = Modifier.weight(1.3f),
-                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
-                    shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF00E676))
-                ) {
-                    Text("⌨️ 140 BPM Typing", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                }
-
-                OutlinedButton(
-                    onClick = {
-                        GuardService.simulateDeepWork(
-                            isDeepWork = true,
-                            score = 92,
-                            cadenceBpm = 0f,
-                            profile = com.auradesk.guard.focus.EnvironmentProfile.LIBRARY_SILENCE
-                        )
-                    },
-                    modifier = Modifier.weight(1.3f),
-                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
-                    shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF38BDF8))
-                ) {
-                    Text("📖 Silent Study", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                }
-
-                OutlinedButton(
-                    onClick = {
-                        GuardService.simulateDeepWork(
-                            isDeepWork = false,
-                            score = 15,
-                            cadenceBpm = 0f
-                        )
-                    },
-                    modifier = Modifier.weight(0.8f),
-                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text("Reset", fontSize = 10.sp)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun InterruptionCapsulesCard(context: Context) {
-    val repository = remember { com.auradesk.guard.data.InterruptionRepository.getInstance(context) }
-    val feedbackManager = remember { com.auradesk.guard.utils.FeedbackManager(context) }
-    val interruptions by repository.allInterruptions.collectAsState()
-    val coroutineScope = rememberCoroutineScope()
-
-    Card(
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF131C2E)),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f).padding(end = 8.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Inbox,
-                        contentDescription = null,
-                        tint = Color(0xFF38BDF8)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        "Interruption Capsules (Room DB)",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
-                        color = Color.White,
-                        maxLines = 1
-                    )
-                }
-
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = Color(0x3338BDF8),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF38BDF8))
-                ) {
-                    Text(
-                        text = "${interruptions.size} LOGGED",
-                        color = Color(0xFF38BDF8),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Capsules List
-            if (interruptions.isEmpty()) {
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = Color(0xFF0F172A),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            "No Interruption Capsules Stored • Clean Desk",
-                            fontSize = 12.sp,
-                            color = Color(0xFF64748B)
-                        )
-                    }
-                }
-            } else {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    interruptions.take(3).forEach { capsule ->
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = Color(0xFF1E293B),
-                            border = androidx.compose.foundation.BorderStroke(
-                                1.dp,
-                                if (capsule.isUrgent) Color(0xFFEF4444) else Color(0xFF334155)
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(12.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            text = capsule.personName,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 13.sp,
-                                            color = Color.White
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = "(${capsule.distanceZone})",
-                                            fontSize = 11.sp,
-                                            color = Color(0xFF94A3B8)
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.height(3.dp))
-                                    Text(
-                                        text = capsule.taskSummary,
-                                        fontSize = 12.sp,
-                                        color = Color(0xFFE2E8F0),
-                                        maxLines = 2
-                                    )
-                                }
-
-                                IconButton(
-                                    onClick = {
-                                        coroutineScope.launch { repository.delete(capsule.id) }
-                                    },
-                                    modifier = Modifier.size(24.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.DeleteOutline,
-                                        contentDescription = "Delete",
-                                        tint = Color(0xFFEF4444),
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // Haptic Whisper Motors Test Row
-            Text(
-                text = "Haptic Whisper Patterns:",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color(0xFF94A3B8)
-            )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                OutlinedButton(
-                    onClick = { feedbackManager.playHapticWhisperLow() },
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text("Low (80ms)", fontSize = 10.sp)
-                }
-
-                OutlinedButton(
-                    onClick = { feedbackManager.playHapticWhisperMedium() },
-                    modifier = Modifier.weight(1.2f),
-                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp),
-                    shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF38BDF8))
-                ) {
-                    Text("Mid (2m Approached)", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                }
-
-                OutlinedButton(
-                    onClick = { feedbackManager.playHapticWhisperUrgent() },
-                    modifier = Modifier.weight(1.2f),
-                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp),
-                    shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFEF4444))
-                ) {
-                    Text("🚨 Urgent (0.5m)", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Simulation Triggers
-            Text(
-                text = "Interruption Simulation & Shake Triggers:",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color(0xFF94A3B8)
-            )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Button(
-                    onClick = {
-                        coroutineScope.launch {
-                            repository.insert(
-                                com.auradesk.guard.data.InterruptionEntity(
-                                    personName = "Rahul from Backend",
-                                    taskSummary = "Review PR #142 API schema changes before 4 PM deployment",
-                                    contextSnippet = "Editing auth/TokenManager.kt line 88",
-                                    distanceZone = "0.5m (At Desk)",
-                                    durationSec = 6L,
-                                    isUrgent = true
-                                )
-                            )
-                            feedbackManager.playHapticWhisperUrgent()
-                        }
-                    },
-                    modifier = Modifier.weight(1.3f),
-                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E3A8A)),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text("🚨 Sim Rahul Visit", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                }
-
-                Button(
-                    onClick = {
-                        coroutineScope.launch {
-                            repository.insert(
-                                com.auradesk.guard.data.InterruptionEntity(
-                                    personName = "Priya (Design Lead)",
-                                    taskSummary = "Sync on Figma design tokens for dark mode theme",
-                                    contextSnippet = "Editing ui/Theme.kt line 42",
-                                    distanceZone = "2.0m (Approached)",
-                                    durationSec = 4L,
-                                    isUrgent = false
-                                )
-                            )
-                            feedbackManager.playHapticWhisperMedium()
-                        }
-                    },
-                    modifier = Modifier.weight(1.3f),
-                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F766E)),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text("🔔 Sim Priya Visit", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                }
-
-                OutlinedButton(
-                    onClick = {
-                        coroutineScope.launch {
-                            repository.deleteAll()
-                            feedbackManager.playIncinerateFeedback()
-                        }
-                    },
-                    modifier = Modifier.weight(0.8f),
-                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp),
-                    shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFEF4444))
-                ) {
-                    Text("Wipe All", fontSize = 10.sp)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun SensorRow(
-    title: String,
-    value: String,
-    isSatisfied: Boolean,
-    criteria: String
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 6.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(title, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = Color.White)
-            Text(criteria, fontSize = 11.sp, color = Color(0xFF64748B))
-        }
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = value,
-                fontFamily = FontFamily.Monospace,
-                fontSize = 13.sp,
-                color = Color(0xFFE2E8F0)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Icon(
-                imageVector = if (isSatisfied) Icons.Default.CheckCircle else Icons.Default.Cancel,
-                contentDescription = null,
-                tint = if (isSatisfied) Color(0xFF00E676) else Color(0xFF475569),
-                modifier = Modifier.size(18.dp)
-            )
         }
     }
 }
@@ -1343,952 +1292,32 @@ fun SensorRow(
 @Composable
 fun TestingInstructionsCard() {
     Card(
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF131C2E)),
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = PureWhite),
+        border = BorderStroke(1.dp, Slate200),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Science, contentDescription = null, tint = Color(0xFF38BDF8))
+                Icon(Icons.Default.Info, contentDescription = null, tint = Slate800, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    "Phase 3 Radar Verification Checklist",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
-                    color = Color.White
-                )
+                Text("Verification & Stage Demo Instructions", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Slate900)
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
             val steps = listOf(
-                "1. Test Simulation Chips: Tap '5m Far' ➔ '🏃 2m Approach' ➔ '🛑 0.5m' to verify radar distance rings, approach growth rate (+28%/s), and approaching alert banner.",
-                "2. Rear Camera Live Radar: When Guard is armed, CameraX analyzes 2fps 320x240 in background with zero video storage (100% privacy).",
-                "3. Continuous Flip: Flip phone down and up repeatedly to verify multi-session stability.",
-                "4. Airplane Mode: Works completely offline with 0 network bytes."
+                "1. Face-down flip: Place device face-down to arm guard and start AOD timer.",
+                "2. Distance radar: Walk toward device from 5m to trigger 2m mid-haptic and 0.5m urgent buzz.",
+                "3. Voice capture: Speak task during 10s arrival window for local speech extraction.",
+                "4. Lift device: View synthesized action item and previous code context snippet.",
+                "5. Shake gesture: Give device 3 rapid shakes to instantly incinerate stored records."
             )
 
             steps.forEach { step ->
-                Text(
-                    text = step,
-                    fontSize = 12.sp,
-                    color = Color(0xFF94A3B8),
-                    modifier = Modifier.padding(vertical = 3.dp)
-                )
+                Text(step, fontSize = 12.sp, color = Slate700, lineHeight = 18.sp)
+                Spacer(modifier = Modifier.height(4.dp))
             }
         }
     }
 }
-
-@Composable
-fun AudioCapsuleSttCard() {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val audioCapsule by GuardService.liveAudioCapsule.collectAsState()
-    val isRecording = audioCapsule.isRecording
-
-    // Runtime Permission Launcher for Microphone
-    val micPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        contract = androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) {
-            GuardService.startAudioCapsule(context, 10)
-        } else {
-            android.widget.Toast.makeText(context, "Microphone permission required for Speech-to-Text", android.widget.Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    val themeColor = when {
-        isRecording -> Color(0xFFEF4444)
-        audioCapsule.isVoiceDetected -> Color(0xFF00E676)
-        else -> Color(0xFF38BDF8)
-    }
-
-    Card(
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF131C2E)),
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(
-                1.5.dp,
-                if (isRecording) Color(0xFFEF4444) else Color(0xFF1E293B),
-                RoundedCornerShape(14.dp)
-            )
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f).padding(end = 8.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Mic,
-                        contentDescription = null,
-                        tint = themeColor
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        "Audio Pipeline & Vosk STT",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
-                        color = Color.White,
-                        maxLines = 1
-                    )
-                }
-
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = themeColor.copy(alpha = 0.2f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, themeColor)
-                ) {
-                    Text(
-                        text = when {
-                            isRecording -> "REC (${audioCapsule.remainingSeconds}s)"
-                            audioCapsule.isVoiceDetected -> "VOICE ACTIVE"
-                            audioCapsule.capsuleStatus == "PERMISSION_NEEDED" -> "MIC PERM NEEDED"
-                            else -> "OFFLINE STT"
-                        },
-                        color = themeColor,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        softWrap = false,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // Waveform Energy Level Meter
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(if (audioCapsule.isVoiceDetected) Color(0xFF00E676) else Color(0xFF64748B))
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = if (audioCapsule.isVoiceDetected) "VAD: Human Voice Detected" else "VAD: Ambient / Silence",
-                            fontSize = 11.sp,
-                            color = if (audioCapsule.isVoiceDetected) Color(0xFF00E676) else Color(0xFF94A3B8)
-                        )
-                    }
-
-                    Text(
-                        text = "Energy: ${(audioCapsule.audioEnergyLevel * 100).toInt()}%",
-                        fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
-                        color = themeColor
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                LinearProgressIndicator(
-                    progress = { audioCapsule.audioEnergyLevel.coerceIn(0f, 1f) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(6.dp)
-                        .clip(RoundedCornerShape(3.dp)),
-                    color = themeColor,
-                    trackColor = Color(0xFF1E293B)
-                )
-            }
-
-            // 10-Second Countdown Bar (Shown while recording)
-            if (isRecording) {
-                Spacer(modifier = Modifier.height(12.dp))
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = Color(0x33EF4444),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.GraphicEq, contentDescription = null, tint = Color(0xFFEF4444), modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Recording 10s Capsule at 0.5m...",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFFFCA5A5)
-                            )
-                        }
-
-                        Text(
-                            text = "${audioCapsule.remainingSeconds}s left",
-                            fontWeight = FontWeight.Black,
-                            fontFamily = FontFamily.Monospace,
-                            color = Color(0xFFEF4444),
-                            fontSize = 13.sp
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Live Transcribed Text Box
-            Surface(
-                shape = RoundedCornerShape(10.dp),
-                color = Color(0xFF090E17),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1E293B)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Text(
-                        text = "LIVE SPEECH TRANSCRIPT:",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF64748B),
-                        letterSpacing = 0.8.sp
-                    )
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    val displayText = when {
-                        audioCapsule.livePartialTranscript.isNotBlank() -> audioCapsule.livePartialTranscript
-                        audioCapsule.lastFinalTranscript.isNotBlank() -> audioCapsule.lastFinalTranscript
-                        else -> "Speak into phone mic to test live speech-to-text..."
-                    }
-
-                    Text(
-                        text = "\"$displayText\"",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (displayText.startsWith("Speak")) Color(0xFF475569) else Color(0xFFF8FAFC),
-                        lineHeight = 18.sp
-                    )
-
-                    if (audioCapsule.keywordDetected != null) {
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Check, contentDescription = null, tint = Color(0xFF00E676), modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "Trigger Keyword Detected: '${audioCapsule.keywordDetected}'",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF00E676)
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // Interactive Trigger Buttons
-            Text(
-                text = "Audio Capsule Triggers:",
-                fontSize = 11.sp,
-                color = Color(0xFF94A3B8)
-            )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Button(
-                    onClick = {
-                        val hasPerm = androidx.core.content.ContextCompat.checkSelfPermission(
-                            context,
-                            android.Manifest.permission.RECORD_AUDIO
-                        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-
-                        if (hasPerm) {
-                            GuardService.startAudioCapsule(context, 10)
-                        } else {
-                            micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
-                        }
-                    },
-                    modifier = Modifier.weight(1.3f),
-                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isRecording) Color(0xFF7F1D1D) else Color(0xFF0284C7)
-                    ),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Icon(
-                        imageVector = if (isRecording) Icons.Default.MicOff else Icons.Default.Mic,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = if (isRecording) "Recording..." else "🎤 Record 10s STT",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                }
-
-                Button(
-                    onClick = {
-                        GuardService.simulateSpeechCapsule(
-                            context = context,
-                            speakerName = "Siddharth (Backend)",
-                            speechText = "Hey Arjun, do you have 2 mins? The auth token endpoint is failing in staging.",
-                            durationSec = 5L,
-                            isUrgent = true
-                        )
-                    },
-                    modifier = Modifier.weight(1.3f),
-                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E3A8A)),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text("🚨 Sim Speech", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                }
-
-                OutlinedButton(
-                    onClick = {
-                        GuardService.simulateSpeechCapsule(
-                            context = context,
-                            speakerName = "Sneha (PM)",
-                            speechText = "Quick reminder: sprint demo starts at 4:30 PM today.",
-                            durationSec = 4L,
-                            isUrgent = false
-                        )
-                    },
-                    modifier = Modifier.weight(1.2f),
-                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp),
-                    shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF38BDF8))
-                ) {
-                    Text("🔔 Sim PM", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-    }
-}
-
-/**
- * Phase 7: On-Device LLM & Action Synthesizer Card
- */
-@Composable
-fun LlmCapsuleSynthesizerCard(context: Context) {
-    val synthesizedTask by GuardService.liveSynthesizedTask.collectAsState()
-    var customPromptText by remember { mutableStateOf("") }
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1E293B))
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            // Header
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Psychology,
-                        contentDescription = null,
-                        tint = Color(0xFF818CF8),
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "ON-DEVICE LLM SYNTHESIZER",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Black,
-                        color = Color(0xFFF1F5F9),
-                        letterSpacing = 1.sp
-                    )
-                }
-
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = Color(0xFF1E1B4B),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF6366F1))
-                ) {
-                    Text(
-                        text = "⚡ LOCAL AI (<1s)",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFFA5B4FC),
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Synthesized Output Display Box
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                color = Color(0xFF0A0F1D),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF312E81))
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "ACTIONABLE TASK DISTILLED:",
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Black,
-                            color = Color(0xFFA5B4FC),
-                            letterSpacing = 0.5.sp
-                        )
-
-                        if (synthesizedTask != null) {
-                            Surface(
-                                shape = RoundedCornerShape(4.dp),
-                                color = Color(synthesizedTask!!.urgencyLevel.colorHex).copy(alpha = 0.2f),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(synthesizedTask!!.urgencyLevel.colorHex))
-                            ) {
-                                Text(
-                                    text = synthesizedTask!!.urgencyLevel.label,
-                                    fontSize = 8.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(synthesizedTask!!.urgencyLevel.colorHex),
-                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    if (synthesizedTask != null) {
-                        Text(
-                            text = synthesizedTask!!.actionItem,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-
-                        if (synthesizedTask!!.deadlineOrTime != null) {
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Schedule, contentDescription = null, tint = Color(0xFFFCD34D), modifier = Modifier.size(12.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "Deadline: ${synthesizedTask!!.deadlineOrTime}",
-                                    fontSize = 11.sp,
-                                    color = Color(0xFFFCD34D),
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-                        }
-
-                        if (synthesizedTask!!.targetComponent != null) {
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "Component: ${synthesizedTask!!.targetComponent} • Context: ${synthesizedTask!!.urgencyReason ?: "General"}",
-                                fontSize = 10.sp,
-                                color = Color(0xFF94A3B8)
-                            )
-                        }
-                    } else {
-                        Text(
-                            text = "Record or test any spoken sentence below to see on-device AI distillation in real time.",
-                            fontSize = 12.sp,
-                            color = Color(0xFF64748B),
-                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Quick Preset Synthesizer Chips
-            Text(
-                text = "TEST ON-DEVICE LLM SYNTHESIS PRESETS:",
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Black,
-                color = Color(0xFF64748B),
-                letterSpacing = 0.5.sp
-            )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Button(
-                    onClick = {
-                        GuardService.synthesizePrompt(
-                            context = context,
-                            rawText = "Hey Arjun, the login endpoint is throwing 500 on staging, need fix before 4:30pm demo.",
-                            speakerName = "Siddharth (Backend)"
-                        )
-                    },
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF312E81)),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text("⚡ Staging 500", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                }
-
-                Button(
-                    onClick = {
-                        GuardService.synthesizePrompt(
-                            context = context,
-                            rawText = "Can you review pull request 42 for database indexing by noon today?",
-                            speakerName = "Vikram (Lead)"
-                        )
-                    },
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E293B)),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text("📋 PR Review 42", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF38BDF8))
-                }
-
-                Button(
-                    onClick = {
-                        GuardService.synthesizePrompt(
-                            context = context,
-                            rawText = "Please check the new dashboard layout in Figma before tomorrow morning.",
-                            speakerName = "Sneha (PM)"
-                        )
-                    },
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF064E3B)),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text("🎨 Figma Layout", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF34D399))
-                }
-            }
-        }
-    }
-}
-
-/**
- * Phase 8: Vivo Office Kit & Jovi Notes Sync Card
- */
-@Composable
-fun VivoOfficeKitCard(context: Context) {
-    val joviSyncManager = remember { GuardService.getJoviNotesSyncManager(context) }
-    val syncState by joviSyncManager.syncState.collectAsState()
-    val repo = remember { com.auradesk.guard.data.InterruptionRepository.getInstance(context) }
-    val activeCapsule by repo.activeCapsule.collectAsState()
-    val allInterruptions by repo.allInterruptions.collectAsState()
-    val syncedCount = allInterruptions.count { it.joviSynced || it.status == "SAVED_TO_NOTES" }
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF0D1B2A)),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1E3A8A))
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            // Header
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Description,
-                        contentDescription = null,
-                        tint = Color(0xFF38BDF8),
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "VIVO OFFICE KIT & JOVI NOTES",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Black,
-                        color = Color(0xFFF1F5F9),
-                        letterSpacing = 1.sp
-                    )
-                }
-
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = Color(0xFF0F2E1E),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF00E676))
-                ) {
-                    Text(
-                        text = "📱 ORIGINOS ECOSYSTEM",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF00E676),
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Sync Stats & Auto-Sync Switch
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = Color(0xFF070D18),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1E293B)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(
-                                text = "Auto-Sync Urgent Tasks to Notes",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                            Text(
-                                text = "Drafts critical desk capsules instantly",
-                                fontSize = 10.sp,
-                                color = Color(0xFF64748B)
-                            )
-                        }
-
-                        Switch(
-                            checked = syncState.isAutoSyncEnabled,
-                            onCheckedChange = { joviSyncManager.setAutoSyncEnabled(it) },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.White,
-                                checkedTrackColor = Color(0xFF0284C7),
-                                uncheckedThumbColor = Color(0xFF94A3B8),
-                                uncheckedTrackColor = Color(0xFF334155)
-                            )
-                        )
-                    }
-
-                    HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 8.dp),
-                        thickness = 1.dp,
-                        color = Color(0xFF1E293B)
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Tasks Synced to Jovi Notes:",
-                            fontSize = 11.sp,
-                            color = Color(0xFF94A3B8)
-                        )
-                        Text(
-                            text = "$syncedCount Task(s)",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Black,
-                            color = Color(0xFF38BDF8)
-                        )
-                    }
-
-                    if (syncState.lastSyncedTitle.isNotBlank()) {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Latest: \"${syncState.lastSyncedTitle}\"",
-                            fontSize = 10.sp,
-                            color = Color(0xFF00E676),
-                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Action Buttons
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Button(
-                    onClick = {
-                        val target = activeCapsule ?: allInterruptions.firstOrNull()
-                        if (target != null) {
-                            joviSyncManager.syncInterruptionToNotes(target, launchChooser = true)
-                            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                                repo.markJoviSynced(target.id)
-                            }
-                        }
-                    },
-                    modifier = Modifier.weight(1.3f),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
-                    shape = RoundedCornerShape(8.dp),
-                    contentPadding = PaddingValues(vertical = 6.dp, horizontal = 4.dp)
-                ) {
-                    Icon(Icons.Default.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("📝 Sync to Notes", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                }
-
-                Button(
-                    onClick = {
-                        val target = activeCapsule ?: allInterruptions.firstOrNull()
-                        if (target != null) {
-                            joviSyncManager.syncInterruptionToNotes(target, launchChooser = false)
-                            android.widget.Toast.makeText(context, "📋 Markdown Task Copied to Clipboard!", android.widget.Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    modifier = Modifier.weight(1.2f),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E293B)),
-                    shape = RoundedCornerShape(8.dp),
-                    contentPadding = PaddingValues(vertical = 6.dp, horizontal = 4.dp)
-                ) {
-                    Icon(Icons.Default.ContentCopy, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("📋 Copy Task", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF38BDF8))
-                }
-            }
-        }
-    }
-}
-
-/**
- * Phase 9: Battery (<3%/hr) & Air-Gapped Privacy Card
- */
-@Composable
-fun PrivacyBatteryGuardCard(context: Context) {
-    val powerManager = remember { GuardService.getPowerManagerGuard(context) }
-    val privacyAuditor = remember { GuardService.getPrivacyAuditor(context) }
-    val powerTelemetry by powerManager.telemetry.collectAsState()
-    val auditReport by privacyAuditor.auditReport.collectAsState()
-    var showAuditDetails by remember { mutableStateOf(false) }
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1E293B))
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            // Header
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Shield,
-                        contentDescription = null,
-                        tint = Color(0xFF00E676),
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "BATTERY (<3%/HR) & PRIVACY",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Black,
-                        color = Color(0xFFF1F5F9),
-                        letterSpacing = 1.sp
-                    )
-                }
-
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = Color(0xFF0F2E1E),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF00E676))
-                ) {
-                    Text(
-                        text = "🔒 0-BYTE AIR-GAPPED",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF00E676),
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Battery & Duty-Cycle Telemetry Box
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = Color(0xFF070D18),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1E293B)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = if (powerTelemetry.isCharging) Icons.Default.BatteryChargingFull else Icons.Default.BatteryStd,
-                                contentDescription = null,
-                                tint = Color(0xFF38BDF8),
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Battery: ${powerTelemetry.batteryPercent}% ${if (powerTelemetry.isCharging) "(Charging)" else ""}",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                        }
-
-                        Surface(
-                            shape = RoundedCornerShape(4.dp),
-                            color = Color(0xFF0C4A6E),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF38BDF8))
-                        ) {
-                            Text(
-                                text = "⚡ ${powerTelemetry.estimatedDrainPerHour}% / hr (Optimal)",
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Black,
-                                color = Color(0xFF38BDF8),
-                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Text(
-                        text = "Adaptive Duty-Cycle: ${powerTelemetry.currentTier.label}",
-                        fontSize = 11.sp,
-                        color = Color(powerTelemetry.currentTier.colorHex),
-                        fontWeight = FontWeight.SemiBold
-                    )
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    Text(
-                        text = "🖤 AMOLED Pixel Saver: Pure #000000 true-black screen saver (95% OLED savings)",
-                        fontSize = 10.sp,
-                        color = Color(0xFF64748B)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Privacy Checklist
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = Color(0xFF070D18),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1E293B)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Text(
-                        text = "ZERO-BYTE AIR-GAP CERTIFICATION:",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Black,
-                        color = Color(0xFF94A3B8),
-                        letterSpacing = 0.5.sp
-                    )
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    Text(
-                        text = "• Internet Permissions: NONE (Manifest Enforced)",
-                        fontSize = 11.sp,
-                        color = Color(0xFF00E676),
-                        fontWeight = FontWeight.Medium
-                    )
-
-                    Text(
-                        text = "• Network Traffic: 0.00 KB sent / 0.00 KB received",
-                        fontSize = 11.sp,
-                        color = Color(0xFF00E676),
-                        fontWeight = FontWeight.Medium
-                    )
-
-                    Text(
-                        text = "• RAM Sanitizer: Active (Raw PCM audio auto-zeroed)",
-                        fontSize = 11.sp,
-                        color = Color(0xFF00E676),
-                        fontWeight = FontWeight.Medium
-                    )
-
-                    Text(
-                        text = "• Storage: 100% On-Device Local SQLite",
-                        fontSize = 11.sp,
-                        color = Color(0xFF00E676),
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Action Buttons
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Button(
-                    onClick = {
-                        val report = privacyAuditor.runPrivacyAudit()
-                        android.widget.Toast.makeText(
-                            context,
-                            "✅ Privacy & Air-Gap Audit Passed: 0 bytes network, 0 sockets!",
-                            android.widget.Toast.LENGTH_LONG
-                        ).show()
-                    },
-                    modifier = Modifier.weight(1.3f),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF065F46)),
-                    shape = RoundedCornerShape(8.dp),
-                    contentPadding = PaddingValues(vertical = 6.dp, horizontal = 4.dp)
-                ) {
-                    Icon(Icons.Default.VerifiedUser, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("🔒 Run Privacy Audit", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                }
-
-                Button(
-                    onClick = {
-                        privacyAuditor.panicPurge {
-                            android.widget.Toast.makeText(
-                                context,
-                                "🚨 Panic Wipe Complete: Database & Clipboard Wiped!",
-                                android.widget.Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    },
-                    modifier = Modifier.weight(1.1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7F1D1D)),
-                    shape = RoundedCornerShape(8.dp),
-                    contentPadding = PaddingValues(vertical = 6.dp, horizontal = 4.dp)
-                ) {
-                    Icon(Icons.Default.DeleteForever, contentDescription = null, tint = Color(0xFFFCA5A5), modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("🚨 Panic Wipe", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFCA5A5))
-                }
-            }
-        }
-    }
-}
-
-
-

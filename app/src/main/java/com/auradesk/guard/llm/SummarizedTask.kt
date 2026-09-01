@@ -1,10 +1,10 @@
 package com.auradesk.guard.llm
 
 enum class UrgencyLevel(val label: String, val colorHex: Long) {
-    CRITICAL("🚨 CRITICAL", 0xFFEF4444),
-    HIGH("⚠️ HIGH", 0xFFF59E0B),
-    NORMAL("ℹ️ NORMAL", 0xFF38BDF8),
-    LOW("💤 LOW", 0xFF64748B)
+    CRITICAL("CRITICAL", 0xFFDC2626),
+    HIGH("HIGH", 0xFFD97706),
+    NORMAL("NORMAL", 0xFF1D4ED8),
+    LOW("LOW", 0xFF64748B)
 }
 
 data class SummarizedTask(

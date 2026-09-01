@@ -6,7 +6,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -19,7 +19,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -28,13 +27,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.auradesk.guard.ui.theme.*
 
 data class OnboardingStep(
     val title: String,
     val subtitle: String,
     val description: String,
     val icon: ImageVector,
-    val accentColor: Color,
     val badgeLabel: String
 )
 
@@ -46,27 +45,24 @@ fun OnboardingScreen(onFinish: () -> Unit) {
     val steps = remember {
         listOf(
             OnboardingStep(
-                title = "Zero-Touch Desk Guard",
-                subtitle = "AUTOMATIC DEEP WORK FOCUS",
-                description = "Place your phone face-down at the edge of your desk. AuraDesk instantly arms high-frequency optical sensors to monitor your physical work sanctuary.",
-                icon = Icons.Default.ScreenLockPortrait,
-                accentColor = Color(0xFF38BDF8),
+                title = "Autonomous Focus Protection",
+                subtitle = "OPTICAL & INERTIAL SENSOR FUSION",
+                description = "Place your device face-down at the edge of your desk. AuraDesk activates low-power optical sensors to automatically establish and guard your deep work focus zone.",
+                icon = Icons.Default.Shield,
                 badgeLabel = "STEP 1 OF 3"
             ),
             OnboardingStep(
-                title = "Person Radar & Whisper",
-                subtitle = "ZERO-TOUCH INTRUSION DETECTION",
-                description = "When a colleague or visitor walks within 2 meters of your desk, AuraDesk alerts you with a gentle, silent haptic whisper before they tap your shoulder.",
+                title = "Proximity Radar & Haptics",
+                subtitle = "SILENT PERIMETER DETECTION",
+                description = "Monitors approaching visitors within a 2-meter radius using on-device vision, delivering silent subconscious haptic cues before your concentration is interrupted.",
                 icon = Icons.Default.Radar,
-                accentColor = Color(0xFF00E676),
                 badgeLabel = "STEP 2 OF 3"
             ),
             OnboardingStep(
-                title = "On-Device Voice AI & Notes",
-                subtitle = "100% AIR-GAPPED PRIVACY",
-                description = "Captures a 10-second offline audio capsule, distills action items using local intelligence, and syncs directly into Vivo Jovi Notes with zero cloud exposure.",
+                title = "Offline Action Synthesis",
+                subtitle = "AIR-GAPPED ON-DEVICE INTELLIGENCE",
+                description = "Captures brief offline audio capsules, synthesizes actionable tasks using local intelligence, and synchronizes with Vivo Notes with zero network exposure.",
                 icon = Icons.Default.Psychology,
-                accentColor = Color(0xFFA855F7),
                 badgeLabel = "STEP 3 OF 3"
             )
         )
@@ -97,84 +93,76 @@ fun OnboardingScreen(onFinish: () -> Unit) {
         permissionsGranted = result.values.all { it }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFF070C15))
-    ) {
+    Scaffold(
+        containerColor = PureWhite
+    ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .padding(padding)
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // Top App Bar
+            // Header Bar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 16.dp),
+                    .padding(top = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
-                            .size(10.dp)
+                            .size(8.dp)
                             .clip(CircleShape)
-                            .background(currentStep.accentColor)
+                            .background(Slate900)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = "AURADESK",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Black,
-                        color = Color.White,
-                        letterSpacing = 2.sp
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Slate900,
+                        letterSpacing = 1.5.sp
                     )
                 }
 
                 Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = currentStep.accentColor.copy(alpha = 0.15f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, currentStep.accentColor)
+                    shape = RoundedCornerShape(4.dp),
+                    color = Slate100,
+                    border = BorderStroke(1.dp, Slate200)
                 ) {
                     Text(
                         text = currentStep.badgeLabel,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = currentStep.accentColor,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Slate700,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
             }
 
-            // Central Feature Showcase
+            // Central Showcase
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(vertical = 20.dp)
+                modifier = Modifier.padding(vertical = 24.dp)
             ) {
-                // Hero Icon Ring
+                // Flat Solid Icon Container
                 Box(
                     modifier = Modifier
-                        .size(120.dp)
+                        .size(96.dp)
                         .clip(CircleShape)
-                        .background(
-                            Brush.radialGradient(
-                                colors = listOf(
-                                    currentStep.accentColor.copy(alpha = 0.25f),
-                                    Color.Transparent
-                                )
-                            )
-                        )
-                        .border(2.dp, currentStep.accentColor, CircleShape),
+                        .background(Slate100)
+                        .border(1.dp, Slate300, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = currentStep.icon,
                         contentDescription = null,
-                        tint = currentStep.accentColor,
-                        modifier = Modifier.size(56.dp)
+                        tint = Slate900,
+                        modifier = Modifier.size(44.dp)
                     )
                 }
 
@@ -183,72 +171,93 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                 Text(
                     text = currentStep.subtitle,
                     fontSize = 11.sp,
-                    fontWeight = FontWeight.Black,
-                    color = currentStep.accentColor,
-                    letterSpacing = 1.5.sp
+                    fontWeight = FontWeight.Bold,
+                    color = Slate500,
+                    letterSpacing = 1.2.sp
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Text(
                     text = currentStep.title,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Black,
-                    color = Color.White,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Slate900,
                     textAlign = TextAlign.Center
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
                 Text(
                     text = currentStep.description,
                     fontSize = 14.sp,
-                    color = Color(0xFF94A3B8),
+                    color = Slate600,
                     textAlign = TextAlign.Center,
                     lineHeight = 22.sp,
-                    modifier = Modifier.padding(horizontal = 12.dp)
+                    modifier = Modifier.padding(horizontal = 8.dp)
                 )
 
                 Spacer(modifier = Modifier.height(28.dp))
 
-                // Permissions Quick Card on Final Step
+                // Permissions Card on Final Step
                 if (currentStepIndex == 2) {
                     Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = Color(0xFF0F172A),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1E293B)),
+                        shape = RoundedCornerShape(8.dp),
+                        color = Slate50,
+                        border = BorderStroke(1.dp, Slate200),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
+                        Column(modifier = Modifier.padding(16.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "Hardware Permissions Status:",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFCBD5E1)
-                                )
-                                Text(
-                                    text = if (permissionsGranted) "✅ ALL GRANTED" else "⚠️ REQUIRED",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = if (permissionsGranted) Color(0xFF00E676) else Color(0xFFF59E0B)
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Security,
+                                        contentDescription = null,
+                                        tint = Slate700,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Required Device Permissions",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Slate900
+                                    )
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = if (permissionsGranted) StatusGreenBg else StatusAmberBg,
+                                    border = BorderStroke(1.dp, if (permissionsGranted) StatusGreenBorder else StatusAmberBorder)
+                                ) {
+                                    Text(
+                                        text = if (permissionsGranted) "Granted" else "Required",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (permissionsGranted) StatusGreen else StatusAmber,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
                             }
 
                             if (!permissionsGranted) {
-                                Spacer(modifier = Modifier.height(8.dp))
+                                Spacer(modifier = Modifier.height(12.dp))
                                 Button(
                                     onClick = { permissionLauncher.launch(permissionsToRequest.toTypedArray()) },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
-                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Slate900),
+                                    shape = RoundedCornerShape(6.dp),
                                     modifier = Modifier.fillMaxWidth(),
-                                    contentPadding = PaddingValues(vertical = 6.dp)
+                                    contentPadding = PaddingValues(vertical = 10.dp)
                                 ) {
-                                    Text("Grant Camera & Mic Access", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        "Grant Camera & Microphone Access",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = PureWhite
+                                    )
                                 }
                             }
                         }
@@ -257,7 +266,7 @@ fun OnboardingScreen(onFinish: () -> Unit) {
             }
 
             // Bottom Navigation Row
-            Column(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+            Column(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
                 // Page Indicator Dots
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -267,12 +276,10 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                     steps.indices.forEach { index ->
                         Box(
                             modifier = Modifier
-                                .padding(horizontal = 4.dp)
-                                .size(if (index == currentStepIndex) 20.dp else 8.dp, 8.dp)
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(
-                                    if (index == currentStepIndex) currentStep.accentColor else Color(0xFF1E293B)
-                                )
+                                .padding(horizontal = 3.dp)
+                                .size(if (index == currentStepIndex) 20.dp else 6.dp, 6.dp)
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(if (index == currentStepIndex) Slate900 else Slate200)
                         )
                     }
                 }
@@ -287,10 +294,11 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                         OutlinedButton(
                             onClick = { currentStepIndex-- },
                             modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF94A3B8))
+                            shape = RoundedCornerShape(6.dp),
+                            border = BorderStroke(1.dp, Slate300),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Slate700)
                         ) {
-                            Text("Back", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text("Back", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
 
@@ -299,22 +307,21 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                             if (currentStepIndex < steps.size - 1) {
                                 currentStepIndex++
                             } else {
-                                // Save completion in SharedPreferences
                                 val prefs = context.getSharedPreferences("auradesk_prefs", Context.MODE_PRIVATE)
                                 prefs.edit().putBoolean("has_completed_onboarding", true).apply()
                                 onFinish()
                             }
                         },
                         modifier = Modifier.weight(if (currentStepIndex > 0) 1.5f else 1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = currentStep.accentColor),
-                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Slate900),
+                        shape = RoundedCornerShape(6.dp),
                         contentPadding = PaddingValues(vertical = 12.dp)
                     ) {
                         Text(
-                            text = if (currentStepIndex < steps.size - 1) "Next Step →" else "Enter AuraDesk Dashboard",
+                            text = if (currentStepIndex < steps.size - 1) "Continue" else "Open Dashboard",
                             fontSize = 13.sp,
-                            fontWeight = FontWeight.Black,
-                            color = Color(0xFF070C15)
+                            fontWeight = FontWeight.SemiBold,
+                            color = PureWhite
                         )
                     }
                 }

@@ -1,6 +1,7 @@
 package com.auradesk.guard.ui
 
 import androidx.compose.animation.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -19,6 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.auradesk.guard.data.InterruptionEntity
+import com.auradesk.guard.ui.theme.*
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -38,15 +40,13 @@ fun InterruptionCard(
     }
 
     Card(
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF101726)),
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(
-                2.dp,
-                if (capsule.isUrgent) Color(0xFFEF4444) else Color(0xFF38BDF8),
-                RoundedCornerShape(20.dp)
-            )
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = PureWhite),
+        border = BorderStroke(
+            1.dp,
+            if (capsule.isUrgent) StatusRed else Slate200
+        ),
+        modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             // Header Row: Avatar + Visitor info + Urgency Pill
@@ -58,17 +58,17 @@ fun InterruptionCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
-                            .size(44.dp)
+                            .size(40.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFF1E293B))
-                            .border(1.5.dp, Color(0xFF38BDF8), CircleShape),
+                            .background(Slate100)
+                            .border(1.dp, Slate300, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = capsule.personName.firstOrNull()?.toString()?.uppercase() ?: "V",
-                            fontWeight = FontWeight.Black,
-                            fontSize = 18.sp,
-                            color = Color(0xFF38BDF8)
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            color = Slate800
                         )
                     }
 
@@ -78,13 +78,13 @@ fun InterruptionCard(
                         Text(
                             text = capsule.personName,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp,
-                            color = Color.White
+                            fontSize = 15.sp,
+                            color = Slate900
                         )
                         Text(
                             text = "$formattedTime • ${capsule.durationSec}s visit (${capsule.distanceZone})",
                             fontSize = 12.sp,
-                            color = Color(0xFF94A3B8)
+                            color = Slate500
                         )
                     }
                 }
@@ -92,34 +92,34 @@ fun InterruptionCard(
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     if (capsule.targetComponent.isNotBlank()) {
                         Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = Color(0xFF0F2E1E),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF00E676))
+                            shape = RoundedCornerShape(4.dp),
+                            color = Slate100,
+                            border = BorderStroke(1.dp, Slate200)
                         ) {
                             Text(
                                 text = capsule.targetComponent.uppercase(),
-                                color = Color(0xFF00E676),
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                color = Slate700,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                             )
                         }
                     }
 
                     Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = if (capsule.isUrgent) Color(0x33EF4444) else Color(0x3338BDF8),
-                        border = androidx.compose.foundation.BorderStroke(
+                        shape = RoundedCornerShape(4.dp),
+                        color = if (capsule.isUrgent) StatusRedBg else Slate100,
+                        border = BorderStroke(
                             1.dp,
-                            if (capsule.isUrgent) Color(0xFFEF4444) else Color(0xFF38BDF8)
+                            if (capsule.isUrgent) StatusRedBorder else Slate200
                         )
                     ) {
                         Text(
-                            text = if (capsule.isUrgent) "🚨 URGENT" else "INTERRUPTION",
-                            color = if (capsule.isUrgent) Color(0xFFFCA5A5) else Color(0xFF38BDF8),
+                            text = if (capsule.isUrgent) "Urgent" else "Interruption",
+                            color = if (capsule.isUrgent) StatusRed else Slate700,
                             fontSize = 10.sp,
-                            fontWeight = FontWeight.Black,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                         )
                     }
                 }
@@ -127,11 +127,11 @@ fun InterruptionCard(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // AI Distilled Action Item Card
+            // Action Item Box
             Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = Color(0xFF1E293B).copy(alpha = 0.8f),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF334155)),
+                shape = RoundedCornerShape(8.dp),
+                color = Slate50,
+                border = BorderStroke(1.dp, Slate200),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
@@ -141,13 +141,18 @@ fun InterruptionCard(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Bolt, contentDescription = null, tint = Color(0xFF00E676), modifier = Modifier.size(14.dp))
+                            Icon(
+                                imageVector = Icons.Default.Bolt,
+                                contentDescription = null,
+                                tint = Slate700,
+                                modifier = Modifier.size(14.dp)
+                            )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "AI SYNTHESIZED ACTION ITEM:",
+                                text = "SYNTHESIZED ACTION ITEM",
                                 fontSize = 10.sp,
-                                fontWeight = FontWeight.Black,
-                                color = Color(0xFF00E676),
+                                fontWeight = FontWeight.Bold,
+                                color = Slate700,
                                 letterSpacing = 0.8.sp
                             )
                         }
@@ -155,16 +160,27 @@ fun InterruptionCard(
                         if (capsule.aiDeadline.isNotBlank()) {
                             Surface(
                                 shape = RoundedCornerShape(4.dp),
-                                color = Color(0x33F59E0B),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF59E0B))
+                                color = StatusAmberBg,
+                                border = BorderStroke(1.dp, StatusAmberBorder)
                             ) {
-                                Text(
-                                    text = "⏰ ${capsule.aiDeadline}",
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFFCD34D),
-                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                                )
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Schedule,
+                                        contentDescription = null,
+                                        tint = StatusAmber,
+                                        modifier = Modifier.size(10.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Text(
+                                        text = capsule.aiDeadline,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = StatusAmber
+                                    )
+                                }
                             }
                         }
                     }
@@ -179,9 +195,9 @@ fun InterruptionCard(
 
                     Text(
                         text = displayAction,
-                        fontSize = 16.sp,
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFFF8FAFC),
+                        color = Slate900,
                         lineHeight = 22.sp
                     )
 
@@ -189,32 +205,37 @@ fun InterruptionCard(
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
                             text = "Context: ${capsule.aiUrgencyReason}",
-                            fontSize = 11.sp,
-                            color = Color(0xFF94A3B8)
+                            fontSize = 12.sp,
+                            color = Slate500
                         )
                     }
                 }
             }
 
-            // Raw Visitor Quote Accordion
+            // Raw Visitor Quote Box
             if (capsule.rawTranscript.isNotBlank()) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = Color(0xFF090E17),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1E293B)),
+                    shape = RoundedCornerShape(6.dp),
+                    color = Slate50,
+                    border = BorderStroke(1.dp, Slate200),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
                         modifier = Modifier.padding(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.FormatQuote, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(16.dp))
+                        Icon(
+                            imageVector = Icons.Default.FormatQuote,
+                            contentDescription = null,
+                            tint = Slate500,
+                            modifier = Modifier.size(16.dp)
+                        )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = "\"${capsule.rawTranscript}\"",
                             fontSize = 12.sp,
-                            color = Color(0xFFCBD5E1),
+                            color = Slate700,
                             fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
                         )
                     }
@@ -223,7 +244,7 @@ fun InterruptionCard(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Toggleable Work Context
+            // Work Context Toggle
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -236,17 +257,17 @@ fun InterruptionCard(
                     Icon(
                         imageVector = if (showContextDetails) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                         contentDescription = null,
-                        tint = Color(0xFF38BDF8),
-                        modifier = Modifier.size(18.dp)
+                        tint = Slate700,
+                        modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = if (showContextDetails) "Hide Work Context" else "Show Work Context You Were In",
+                        text = if (showContextDetails) "Hide Work Context" else "View Pre-Interruption Context",
                         fontSize = 12.sp,
-                        color = Color(0xFF38BDF8)
+                        fontWeight = FontWeight.SemiBold,
+                        color = Slate700
                     )
                 }
-
 
                 IconButton(
                     onClick = { onDelete(capsule.id) },
@@ -255,7 +276,7 @@ fun InterruptionCard(
                     Icon(
                         imageVector = Icons.Default.DeleteOutline,
                         contentDescription = "Delete",
-                        tint = Color(0xFFEF4444),
+                        tint = StatusRed,
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -263,9 +284,9 @@ fun InterruptionCard(
 
             AnimatedVisibility(visible = showContextDetails) {
                 Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = Color(0xFF0F172A),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1E293B)),
+                    shape = RoundedCornerShape(6.dp),
+                    color = Slate100,
+                    border = BorderStroke(1.dp, Slate200),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 4.dp, bottom = 8.dp)
@@ -277,15 +298,15 @@ fun InterruptionCard(
                         Icon(
                             imageVector = Icons.Default.Code,
                             contentDescription = null,
-                            tint = Color(0xFF00E676),
+                            tint = Slate700,
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Context: ${capsule.contextSnippet}",
+                            text = "Location: ${capsule.contextSnippet}",
                             fontFamily = FontFamily.Monospace,
                             fontSize = 11.sp,
-                            color = Color(0xFFCBD5E1)
+                            color = Slate800
                         )
                     }
                 }
@@ -293,7 +314,7 @@ fun InterruptionCard(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Action Buttons Row
+            // Action Buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -306,40 +327,40 @@ fun InterruptionCard(
                     },
                     modifier = Modifier.weight(1.4f),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (capsule.status == "SAVED_TO_NOTES" || capsule.joviSynced) Color(0xFF0F2E1E) else Color(0xFF2563EB)
+                        containerColor = if (capsule.status == "SAVED_TO_NOTES" || capsule.joviSynced) StatusGreenBg else Slate900
                     ),
-                    shape = RoundedCornerShape(10.dp)
+                    shape = RoundedCornerShape(6.dp),
+                    border = if (capsule.status == "SAVED_TO_NOTES" || capsule.joviSynced) BorderStroke(1.dp, StatusGreenBorder) else null
                 ) {
                     Icon(
                         imageVector = if (capsule.status == "SAVED_TO_NOTES" || capsule.joviSynced) Icons.Default.Check else Icons.Default.NoteAdd,
                         contentDescription = null,
                         modifier = Modifier.size(16.dp),
-                        tint = if (capsule.status == "SAVED_TO_NOTES" || capsule.joviSynced) Color(0xFF00E676) else Color.White
+                        tint = if (capsule.status == "SAVED_TO_NOTES" || capsule.joviSynced) StatusGreen else PureWhite
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = if (capsule.status == "SAVED_TO_NOTES" || capsule.joviSynced) "✅ Synced to Jovi Notes" else "Create Task in Jovi Notes",
+                        text = if (capsule.status == "SAVED_TO_NOTES" || capsule.joviSynced) "Saved to Notes" else "Save to Vivo Notes",
                         fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (capsule.status == "SAVED_TO_NOTES" || capsule.joviSynced) Color(0xFF00E676) else Color.White
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (capsule.status == "SAVED_TO_NOTES" || capsule.joviSynced) StatusGreen else PureWhite
                     )
                 }
 
-
                 OutlinedButton(
                     onClick = { onDismiss(capsule.id) },
-                    modifier = Modifier.weight(0.9f),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF94A3B8))
+                    modifier = Modifier.weight(0.8f),
+                    shape = RoundedCornerShape(6.dp),
+                    border = BorderStroke(1.dp, Slate300),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Slate700)
                 ) {
-                    Text("Dismiss", fontSize = 12.sp)
+                    Text("Dismiss", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
 
+            Spacer(modifier = Modifier.height(10.dp))
 
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Shake-to-delete Hint
+            // Shake-to-delete indicator
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.Center,
@@ -348,14 +369,14 @@ fun InterruptionCard(
                 Icon(
                     imageVector = Icons.Default.Vibration,
                     contentDescription = null,
-                    tint = Color(0xFF64748B),
-                    modifier = Modifier.size(14.dp)
+                    tint = Slate400,
+                    modifier = Modifier.size(12.dp)
                 )
-                Spacer(modifier = Modifier.width(6.dp))
+                Spacer(modifier = Modifier.width(4.dp))
                 Text(
-                    text = "Shake phone 3 times to incinerate & instant-wipe",
+                    text = "Shake device 3 times to incinerate",
                     fontSize = 11.sp,
-                    color = Color(0xFF64748B)
+                    color = Slate400
                 )
             }
         }

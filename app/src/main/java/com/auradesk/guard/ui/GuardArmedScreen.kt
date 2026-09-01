@@ -1,15 +1,16 @@
 package com.auradesk.guard.ui
 
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ElectricBolt
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.HourglassTop
-import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -26,6 +27,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.auradesk.guard.ui.theme.*
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -37,19 +39,17 @@ fun GuardArmedScreen(
 ) {
     val deepWorkState by com.auradesk.guard.service.GuardService.liveDeepWork.collectAsState()
 
-    // Pulse animation for the shield
     val infiniteTransition = rememberInfiniteTransition(label = "shieldPulse")
     val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 0.95f,
-        targetValue = 1.05f,
+        initialValue = 0.96f,
+        targetValue = 1.04f,
         animationSpec = infiniteRepeatable(
-            animation = tween(2000, easing = FastOutSlowInEasing),
+            animation = tween(2400, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "pulseScale"
     )
 
-    // Elapsed session timer
     var elapsedSeconds by remember { mutableStateOf(0L) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -70,12 +70,12 @@ fun GuardArmedScreen(
         String.format("%02d:%02d", minutes, seconds)
     }
 
-    val themeColor = if (deepWorkState.isDeepWork) Color(0xFF00E676) else Color(0xFF38BDF8)
+    val accentColor = if (deepWorkState.isDeepWork) StatusGreen else Slate400
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF090D14)) // OLED Deep Black
+            .background(Color(0xFF000000)) // Pure OLED Black
             .padding(24.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -84,28 +84,28 @@ fun GuardArmedScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // Top Status Pill
+            // Status Tag
             Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = if (deepWorkState.isDeepWork) Color(0xFF132018) else Color(0xFF0F1E2E),
-                border = androidx.compose.foundation.BorderStroke(1.dp, themeColor)
+                shape = RoundedCornerShape(4.dp),
+                color = Color(0xFF111827),
+                border = BorderStroke(1.dp, if (deepWorkState.isDeepWork) StatusGreenBorder else Slate700)
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(8.dp)
+                            .size(6.dp)
                             .clip(CircleShape)
-                            .background(themeColor)
+                            .background(accentColor)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = if (deepWorkState.isDeepWork) "⚡ DEEP WORK SHIELD: ACTIVE" else "DESK FOCUS BODYGUARD ARMED",
+                        text = if (deepWorkState.isDeepWork) "DEEP WORK FOCUS ACTIVE" else "DESK GUARD ARMED",
                         fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = themeColor,
+                        fontWeight = FontWeight.SemiBold,
+                        color = accentColor,
                         letterSpacing = 1.sp
                     )
                 }
@@ -113,49 +113,48 @@ fun GuardArmedScreen(
 
             Spacer(modifier = Modifier.height(36.dp))
 
-            // Glowing Pulsating Shield Icon
+            // Minimalist Central Shield
             Box(
                 modifier = Modifier
-                    .size(130.dp)
+                    .size(110.dp)
                     .scale(pulseScale)
                     .clip(CircleShape)
-                    .background(themeColor.copy(alpha = 0.15f))
-                    .border(2.dp, themeColor, CircleShape),
+                    .background(Color(0xFF111827))
+                    .border(1.dp, accentColor, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Default.Shield,
                     contentDescription = null,
-                    modifier = Modifier.size(68.dp),
-                    tint = themeColor
+                    modifier = Modifier.size(54.dp),
+                    tint = accentColor
                 )
             }
 
             Spacer(modifier = Modifier.height(28.dp))
 
             Text(
-                text = if (deepWorkState.isDeepWork) "⚡ DEEP WORK ACTIVE" else "🛡️ GUARD ARMED",
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Black,
-                color = Color.White,
-                letterSpacing = 1.sp
+                text = if (deepWorkState.isDeepWork) "Deep Work Session" else "Focus Sanctuary Armed",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = PureWhite
             )
 
             Spacer(modifier = Modifier.height(6.dp))
 
             Text(
-                text = if (deepWorkState.isDeepWork) "Focus score ${deepWorkState.focusScore}% • Physical interruptions blocked" else "Phone face-down • Ramp-up in progress",
+                text = if (deepWorkState.isDeepWork) "Focus Index ${deepWorkState.focusScore}% • Physical interruptions shielded" else "Device face-down • Monitoring active",
                 fontSize = 13.sp,
-                color = Color(0xFF94A3B8)
+                color = Slate400
             )
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // Deep Work Timer Card
+            // Timer Box
             Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = Color(0xFF101726),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1E293B)),
+                shape = RoundedCornerShape(8.dp),
+                color = Color(0xFF0B0F17),
+                border = BorderStroke(1.dp, Color(0xFF1E293B)),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(
@@ -163,10 +162,10 @@ fun GuardArmedScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "DEEP WORK ELAPSED",
-                        fontSize = 11.sp,
+                        text = "SESSION ELAPSED TIME",
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF64748B),
+                        color = Slate500,
                         letterSpacing = 1.sp
                     )
 
@@ -174,10 +173,10 @@ fun GuardArmedScreen(
 
                     Text(
                         text = formattedTime,
-                        fontSize = 42.sp,
-                        fontWeight = FontWeight.Black,
+                        fontSize = 40.sp,
+                        fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace,
-                        color = Color(0xFF00E676)
+                        color = PureWhite
                     )
 
                     Spacer(modifier = Modifier.height(12.dp))
@@ -187,15 +186,25 @@ fun GuardArmedScreen(
                         horizontalArrangement = Arrangement.SpaceAround
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.HourglassTop, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(14.dp))
+                            Icon(
+                                imageVector = Icons.Default.HourglassTop,
+                                contentDescription = null,
+                                tint = Slate400,
+                                modifier = Modifier.size(14.dp)
+                            )
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("In focus till $returnTime", fontSize = 12.sp, color = Color(0xFFCBD5E1))
+                            Text("Scheduled till $returnTime", fontSize = 12.sp, color = Slate300)
                         }
 
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.ElectricBolt, contentDescription = null, tint = Color(0xFFFBBF24), modifier = Modifier.size(14.dp))
+                            Icon(
+                                imageVector = Icons.Default.Bolt,
+                                contentDescription = null,
+                                tint = StatusGreen,
+                                modifier = Modifier.size(14.dp)
+                            )
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Battery <3%/hr", fontSize = 12.sp, color = Color(0xFFCBD5E1))
+                            Text("Power <3%/hr", fontSize = 12.sp, color = Slate300)
                         }
                     }
                 }
@@ -203,16 +212,22 @@ fun GuardArmedScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // Disarm Hint / Action
+            // Disarm Button
             Button(
                 onClick = onDisarm,
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E293B)),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth()
+                shape = RoundedCornerShape(6.dp),
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(vertical = 12.dp)
             ) {
-                Icon(Icons.Default.Lock, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(16.dp))
+                Icon(
+                    imageVector = Icons.Default.LockOpen,
+                    contentDescription = null,
+                    tint = Slate300,
+                    modifier = Modifier.size(16.dp)
+                )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Pick Up Phone or Tap to Disarm", color = Color(0xFFE2E8F0), fontSize = 13.sp)
+                Text("Pick Up Device or Tap to Disarm", color = PureWhite, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             }
         }
     }

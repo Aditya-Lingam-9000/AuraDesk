@@ -21,7 +21,7 @@ data class PrivacyAuditReport(
     val bytesReceived: Long = 0L,
     val ramSanitizerActive: Boolean = true,
     val activeSocketCount: Int = 0,
-    val auditStatusLabel: String = "🔒 100% AIR-GAPPED & PRIVATE",
+    val auditStatusLabel: String = "AIR-GAPPED & PRIVATE",
     val auditDetails: List<String> = emptyList(),
     val timestamp: Long = System.currentTimeMillis()
 )
@@ -61,7 +61,7 @@ class PrivacyAuditor(private val context: Context) {
      * Run a comprehensive live security & air-gap verification
      */
     fun runPrivacyAudit(): PrivacyAuditReport {
-        Log.i(TAG, "🔒 Running Live Privacy & Air-Gap Audit...")
+        Log.i(TAG, "Running Live Privacy & Air-Gap Audit...")
 
         val details = mutableListOf<String>()
 
@@ -75,23 +75,23 @@ class PrivacyAuditor(private val context: Context) {
             val permissions = packageInfo.requestedPermissions ?: emptyArray()
             hasInternet = permissions.contains("android.permission.INTERNET")
             if (!hasInternet) {
-                details.add("✅ AndroidManifest: Zero INTERNET permissions declared (Air-Gapped)")
+                details.add("AndroidManifest: Zero INTERNET permissions declared (Air-Gapped)")
             } else {
-                details.add("⚠️ Notice: INTERNET permission found in manifest")
+                details.add("Notice: INTERNET permission found in manifest")
             }
         } catch (e: Exception) {
-            details.add("✅ Manifest check verified: No outgoing internet capabilities")
+            details.add("Manifest check verified: No outgoing internet capabilities")
         }
 
         // 2. Network socket verification
         val activeSockets = 0
-        details.add("✅ Active Socket Descriptors: 0 sockets (0 bytes transmitted / 0 bytes received)")
+        details.add("Active Socket Descriptors: 0 sockets (0 bytes transmitted / 0 bytes received)")
 
         // 3. RAM Sanitizer Check
-        details.add("✅ RAM Sanitizer: Active (Raw PCM audio and camera frames auto-purged from RAM)")
+        details.add("RAM Sanitizer: Active (Raw PCM audio and camera frames auto-purged from RAM)")
 
         // 4. Local Database Storage Check
-        details.add("✅ Database: 100% Local SQLite on-device storage with auto-expiry policy")
+        details.add("Database: 100% Local SQLite on-device storage with auto-expiry policy")
 
         val report = PrivacyAuditReport(
             isAirGappedCertified = !hasInternet,
@@ -100,13 +100,13 @@ class PrivacyAuditor(private val context: Context) {
             bytesReceived = 0L,
             ramSanitizerActive = true,
             activeSocketCount = activeSockets,
-            auditStatusLabel = if (!hasInternet) "🔒 100% AIR-GAPPED & PRIVATE" else "⚠️ RESTRICTED OFFLINE",
+            auditStatusLabel = if (!hasInternet) "AIR-GAPPED & PRIVATE" else "RESTRICTED OFFLINE",
             auditDetails = details,
             timestamp = System.currentTimeMillis()
         )
 
         _auditReport.value = report
-        Log.i(TAG, "✅ Privacy Audit Complete: Certified Air-Gapped = ${report.isAirGappedCertified}")
+        Log.i(TAG, "Privacy Audit Complete: Certified Air-Gapped = ${report.isAirGappedCertified}")
         return report
     }
 

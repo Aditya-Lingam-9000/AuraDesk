@@ -469,8 +469,8 @@ class GuardService : Service() {
                 }
 
                 _isArmed.value = faceDown
-                val title = if (faceDown) "🛡️ AuraDesk Guard Armed" else "AuraDesk Guard Standby"
-                val text = if (faceDown) "Focus Shield Active • Battery <3%/hr" else "Flip phone face-down to protect focus"
+                val title = if (faceDown) "AuraDesk Guard Armed" else "AuraDesk Guard Standby"
+                val text = if (faceDown) "Focus Shield Active • Power <3%/hr" else "Place device face-down to arm"
                 updateNotification(title, text)
             }
         }

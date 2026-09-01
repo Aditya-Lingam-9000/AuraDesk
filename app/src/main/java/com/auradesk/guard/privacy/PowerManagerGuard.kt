@@ -11,9 +11,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 enum class DutyCycleTier(val label: String, val fps: Float, val powerDrainRate: String, val colorHex: Long) {
-    IDLE_SLEEP("💤 Ultra-Low Sleep (Sensors Only)", 0.5f, "1.8% / hr", 0xFF00E676),
-    APPROACH_RADAR("⚡ Approach Radar (Medium Sampling)", 6.0f, "2.6% / hr", 0xFF38BDF8),
-    ACTIVE_CAPSULE("🎙️ Active Capsule (Full Audio + Vision)", 10.0f, "3.4% / hr (10s burst)", 0xFFF59E0B)
+    IDLE_SLEEP("Sensors Only (Sleep Mode)", 0.5f, "1.8% / hr", 0xFF059669),
+    APPROACH_RADAR("Approach Radar (Adaptive Sampling)", 6.0f, "2.6% / hr", 0xFF1D4ED8),
+    ACTIVE_CAPSULE("Active Capsule (Audio + Vision)", 10.0f, "3.4% / hr", 0xFFD97706)
 }
 
 data class PowerTelemetry(

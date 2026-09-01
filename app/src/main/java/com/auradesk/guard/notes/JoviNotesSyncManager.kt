@@ -62,23 +62,23 @@ class JoviNotesSyncManager(private val context: Context) {
         }
 
         return buildString {
-            append("📌 **TASK: $actionTitle**\n\n")
-            append("• **Requester:** ${capsule.personName}\n")
+            append("**TASK: $actionTitle**\n\n")
+            append("- **Requester:** ${capsule.personName}\n")
             if (capsule.aiDeadline.isNotBlank()) {
-                append("• **Deadline:** ⏰ ${capsule.aiDeadline}\n")
+                append("- **Deadline:** ${capsule.aiDeadline}\n")
             }
             if (capsule.targetComponent.isNotBlank()) {
-                append("• **Target Component:** ${capsule.targetComponent}\n")
+                append("- **Target Component:** ${capsule.targetComponent}\n")
             }
-            append("• **Priority:** ${if (capsule.isUrgent) "🚨 URGENT / CRITICAL" else "ℹ️ NORMAL"}\n")
-            append("• **Captured At:** $formattedTime (${capsule.durationSec}s desk visit)\n\n")
+            append("- **Priority:** ${if (capsule.isUrgent) "URGENT / CRITICAL" else "NORMAL"}\n")
+            append("- **Captured At:** $formattedTime (${capsule.durationSec}s desk visit)\n\n")
 
             if (capsule.rawTranscript.isNotBlank()) {
-                append("🎙️ **Visitor Speech Quote:**\n")
+                append("**Visitor Speech Quote:**\n")
                 append("> \"${capsule.rawTranscript}\"\n\n")
             }
 
-            append("💻 **Focus Context Interrupted:**\n")
+            append("**Focus Context Interrupted:**\n")
             append("```\n${capsule.contextSnippet}\n```\n\n")
             append("— *Auto-captured by AuraDesk Focus Guard*")
         }
