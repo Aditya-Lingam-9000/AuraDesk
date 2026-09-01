@@ -6,11 +6,9 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.*
-import androidx.compose.animation.core.*
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,9 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -31,7 +27,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import com.auradesk.guard.ui.theme.*
+import com.auradesk.guard.ui.glass.*
 
 data class OnboardingStep(
     val title: String,
@@ -65,7 +61,7 @@ fun OnboardingScreen(onFinish: () -> Unit) {
             OnboardingStep(
                 title = "Offline Action Synthesis",
                 subtitle = "AIR-GAPPED ON-DEVICE INTELLIGENCE",
-                description = "Captures brief offline audio capsules, synthesizes actionable tasks using local intelligence, and synchronizes with Vivo Notes with zero network exposure.",
+                description = "Captures brief offline audio capsules, synthesizes actionable tasks using local intelligence, and synchronizes with Vivo Notes — zero network exposure.",
                 icon = Icons.Default.Psychology,
                 badgeLabel = "STEP 3 OF 3"
             )
@@ -92,139 +88,119 @@ fun OnboardingScreen(onFinish: () -> Unit) {
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { result ->
-        permissionsGranted = result.values.all { it }
-    }
+    ) { result -> permissionsGranted = result.values.all { it } }
 
-    LiquidGlassBackground {
+    // Scene background
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color(0xFFCFDBF2), Color(0xFFE8ECF8))
+                )
+            )
+            .padding(24.dp),
+        contentAlignment = Alignment.Center
+    ) {
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-                .navigationBarsPadding()
-                .padding(24.dp),
+            modifier = Modifier.fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // Header Bar
+            // Header Row
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = "AURADESK",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary,
-                    letterSpacing = 1.5.sp
+                    fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                    color = GlassColors.TextPrimary, letterSpacing = 1.5.sp
                 )
-
-                LiquidGlassBadge(
-                    text = currentStep.badgeLabel,
-                    textColor = TextPrimary,
-                    backgroundColor = Color(0x66FFFFFF),
-                    borderColor = Color(0x80CBD5E1)
-                )
+                GlassBadge(text = currentStep.badgeLabel)
             }
 
-            // Central Liquid Glass Showcase
-            LiquidGlassCard(
-                shape = RoundedCornerShape(28.dp),
-                enableGleam = true,
-                modifier = Modifier.fillMaxWidth()
+            // Central Showcase
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(vertical = 16.dp)
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.padding(vertical = 12.dp)
+                // Animated icon in glass circle
+                GlassCard(
+                    modifier = Modifier.size(100.dp),
+                    cornerRadius = 50.dp
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(80.dp)
-                            .clip(CircleShape)
-                            .background(
-                                Brush.verticalGradient(
-                                    listOf(Color(0xFF1E293B), Color(0xFF0F172A))
-                                )
-                            )
-                            .border(1.5.dp, Color(0x6694A3B8), CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = currentStep.icon,
                             contentDescription = null,
-                            tint = PureWhite,
-                            modifier = Modifier.size(36.dp)
+                            tint = GlassColors.TextPrimary,
+                            modifier = Modifier.size(44.dp)
                         )
                     }
+                }
 
-                    Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(28.dp))
 
-                    Text(
-                        text = currentStep.subtitle,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TextMuted,
-                        letterSpacing = 1.2.sp
-                    )
+                Text(
+                    text = currentStep.subtitle,
+                    fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                    color = GlassColors.TextMuted, letterSpacing = 1.2.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = currentStep.title,
+                    fontSize = 22.sp, fontWeight = FontWeight.Bold,
+                    color = GlassColors.TextPrimary, textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                Text(
+                    text = currentStep.description,
+                    fontSize = 14.sp, color = GlassColors.TextSecondary,
+                    textAlign = TextAlign.Center, lineHeight = 22.sp,
+                    modifier = Modifier.padding(horizontal = 8.dp)
+                )
 
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Text(
-                        text = currentStep.title,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary,
-                        textAlign = TextAlign.Center
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Text(
-                        text = currentStep.description,
-                        fontSize = 13.sp,
-                        color = TextSecondary,
-                        textAlign = TextAlign.Center,
-                        lineHeight = 20.sp,
-                        modifier = Modifier.padding(horizontal = 4.dp)
-                    )
-
-                    // Permissions Card on Step 3
-                    if (currentStepIndex == 2) {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        LiquidGlassTile(modifier = Modifier.fillMaxWidth()) {
+                // Permissions Card on Final Step
+                if (currentStepIndex == 2) {
+                    Spacer(modifier = Modifier.height(24.dp))
+                    GlassCard(
+                        modifier = Modifier.fillMaxWidth(),
+                        tintColor = if (permissionsGranted) GlassColors.GlassGreen.copy(alpha = 0.4f)
+                                    else GlassColors.GlassAmber.copy(alpha = 0.4f)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "Hardware Permissions",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = TextPrimary
-                                )
-                                LiquidGlassBadge(
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Security,
+                                        contentDescription = null,
+                                        tint = GlassColors.TextSecondary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Hardware Permissions", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = GlassColors.TextPrimary)
+                                }
+                                GlassBadge(
                                     text = if (permissionsGranted) "Granted" else "Required",
-                                    textColor = if (permissionsGranted) AccentGreen else AccentAmber,
-                                    backgroundColor = if (permissionsGranted) AccentGreenBg else AccentAmberBg,
-                                    borderColor = if (permissionsGranted) AccentGreenBorder else AccentAmberBorder
+                                    tintColor = if (permissionsGranted) GlassColors.GlassGreen else GlassColors.GlassAmber,
+                                    textColor = if (permissionsGranted) GlassColors.AccentGreen else GlassColors.AccentAmber
                                 )
                             }
 
                             if (!permissionsGranted) {
-                                Spacer(modifier = Modifier.height(10.dp))
-                                LiquidGlassButton(
+                                Spacer(modifier = Modifier.height(12.dp))
+                                GlassButton(
+                                    text = "Grant Camera & Mic Access",
                                     onClick = { permissionLauncher.launch(permissionsToRequest.toTypedArray()) },
-                                    isPrimary = true,
-                                    shape = RoundedCornerShape(10.dp),
                                     modifier = Modifier.fillMaxWidth(),
-                                    contentPadding = PaddingValues(vertical = 10.dp)
-                                ) {
-                                    Text("Grant Camera & Mic Access", fontSize = 12.sp, color = PureWhite, fontWeight = FontWeight.SemiBold)
-                                }
+                                    isPrimary = true
+                                )
                             }
                         }
                     }
@@ -232,31 +208,23 @@ fun OnboardingScreen(onFinish: () -> Unit) {
             }
 
             // Bottom Navigation Row
-            Column(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-                // Step Indicator Dots
+            Column(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+                // Step indicator dots
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     steps.indices.forEach { index ->
-                        val isCurrent = index == currentStepIndex
-                        val dotWidth by animateDpAsState(
-                            targetValue = if (isCurrent) 24.dp else 6.dp,
-                            animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioMediumBouncy,
-                                stiffness = Spring.StiffnessMedium
-                            ),
-                            label = "DotWidth"
-                        )
-
+                        val isSelected = index == currentStepIndex
                         Box(
                             modifier = Modifier
                                 .padding(horizontal = 3.dp)
-                                .size(dotWidth, 6.dp)
+                                .size(if (isSelected) 20.dp else 6.dp, 6.dp)
                                 .clip(RoundedCornerShape(3.dp))
                                 .background(
-                                    if (isCurrent) BrandPrimary else Color(0x6694A3B8)
+                                    if (isSelected) GlassColors.TextPrimary
+                                    else Color(0x88000000)
                                 )
                         )
                     }
@@ -264,22 +232,17 @@ fun OnboardingScreen(onFinish: () -> Unit) {
 
                 Spacer(modifier = Modifier.height(20.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     if (currentStepIndex > 0) {
-                        LiquidGlassButton(
+                        GlassButton(
+                            text = "Back",
                             onClick = { currentStepIndex-- },
-                            isPrimary = false,
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(14.dp)
-                        ) {
-                            Text("Back", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-                        }
+                            modifier = Modifier.weight(1f)
+                        )
                     }
 
-                    LiquidGlassButton(
+                    GlassButton(
+                        text = if (currentStepIndex < steps.size - 1) "Continue" else "Enter Dashboard",
                         onClick = {
                             if (currentStepIndex < steps.size - 1) {
                                 currentStepIndex++
@@ -289,18 +252,9 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                                 onFinish()
                             }
                         },
-                        isPrimary = true,
                         modifier = Modifier.weight(if (currentStepIndex > 0) 1.5f else 1f),
-                        shape = RoundedCornerShape(14.dp),
-                        contentPadding = PaddingValues(vertical = 12.dp)
-                    ) {
-                        Text(
-                            text = if (currentStepIndex < steps.size - 1) "Continue" else "Enter Sanctuary",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = PureWhite
-                        )
-                    }
+                        isPrimary = true
+                    )
                 }
             }
         }

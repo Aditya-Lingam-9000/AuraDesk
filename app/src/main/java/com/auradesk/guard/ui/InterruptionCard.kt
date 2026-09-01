@@ -1,12 +1,10 @@
 package com.auradesk.guard.ui
 
 import androidx.compose.animation.*
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -14,13 +12,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.*
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.auradesk.guard.data.InterruptionEntity
-import com.auradesk.guard.ui.theme.*
+import com.auradesk.guard.notes.JoviNotesSyncManager
+import com.auradesk.guard.ui.glass.*
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -32,252 +33,165 @@ fun InterruptionCard(
     onDismiss: (Long) -> Unit,
     onDelete: (Long) -> Unit
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     var showContextDetails by remember { mutableStateOf(false) }
 
     val formattedTime = remember(capsule.timestamp) {
         SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(capsule.timestamp))
     }
 
-    LiquidGlassCard(
-        shape = RoundedCornerShape(24.dp),
-        enableGleam = true,
-        modifier = Modifier.fillMaxWidth()
+    val isSaved = capsule.status == "SAVED_TO_NOTES" || capsule.joviSynced
+
+    GlassCard(
+        modifier = Modifier.fillMaxWidth(),
+        tintColor = if (capsule.isUrgent) GlassColors.GlassRed.copy(alpha = 0.3f) else Color.Transparent
     ) {
-        // Header Row: Avatar + Visitor info + Urgency Pill
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(42.dp)
-                        .clip(CircleShape)
-                        .background(Color(0x80FFFFFF))
-                        .border(1.2.dp, Color(0xF2FFFFFF), CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = capsule.personName.firstOrNull()?.toString()?.uppercase() ?: "V",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp,
-                        color = TextPrimary
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(12.dp))
-
-                Column {
-                    Text(
-                        text = capsule.personName,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
-                        color = TextPrimary
-                    )
-                    Text(
-                        text = "$formattedTime • ${capsule.durationSec}s visit (${capsule.distanceZone})",
-                        fontSize = 12.sp,
-                        color = TextSecondary
-                    )
-                }
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (capsule.targetComponent.isNotBlank()) {
-                    LiquidGlassBadge(
-                        text = capsule.targetComponent.uppercase(),
-                        textColor = TextSecondary,
-                        backgroundColor = Color(0x66FFFFFF),
-                        borderColor = Color(0x99FFFFFF)
-                    )
-                }
-
-                LiquidGlassBadge(
-                    text = if (capsule.isUrgent) "Urgent" else "Interruption",
-                    textColor = if (capsule.isUrgent) AccentRed else TextPrimary,
-                    backgroundColor = if (capsule.isUrgent) AccentRedBg else Color(0x66FFFFFF),
-                    borderColor = if (capsule.isUrgent) AccentRedBorder else Color(0x80CBD5E1)
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Action Item Box
-        LiquidGlassTile(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            // Header: avatar + name + badges
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "ACTION ITEM",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextMuted,
-                    letterSpacing = 0.8.sp
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Initial avatar
+                    GlassCard(
+                        modifier = Modifier.size(40.dp),
+                        cornerRadius = 20.dp
+                    ) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(
+                                text = capsule.personName.firstOrNull()?.toString()?.uppercase() ?: "V",
+                                fontWeight = FontWeight.Bold, fontSize = 16.sp,
+                                color = GlassColors.TextPrimary
+                            )
+                        }
+                    }
 
-                if (capsule.aiDeadline.isNotBlank()) {
-                    LiquidGlassBadge(
-                        text = capsule.aiDeadline,
-                        textColor = AccentAmber,
-                        backgroundColor = AccentAmberBg,
-                        borderColor = AccentAmberBorder
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    Column {
+                        Text(capsule.personName, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = GlassColors.TextPrimary)
+                        Text(
+                            "$formattedTime • ${capsule.durationSec}s visit (${capsule.distanceZone})",
+                            fontSize = 12.sp, color = GlassColors.TextSecondary
+                        )
+                    }
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (capsule.targetComponent.isNotBlank()) {
+                        GlassBadge(text = capsule.targetComponent.uppercase())
+                    }
+                    GlassBadge(
+                        text = if (capsule.isUrgent) "Urgent" else "Interruption",
+                        tintColor = if (capsule.isUrgent) GlassColors.GlassRed else Color.Transparent,
+                        textColor = if (capsule.isUrgent) GlassColors.AccentRed else GlassColors.TextPrimary
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            val displayAction = if (capsule.aiActionItem.isNotBlank()) {
-                capsule.aiActionItem
-            } else {
-                capsule.taskSummary
-            }
-
-            Text(
-                text = displayAction,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextPrimary,
-                lineHeight = 22.sp
-            )
-
-            if (capsule.aiUrgencyReason.isNotBlank()) {
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = "Context: ${capsule.aiUrgencyReason}",
-                    fontSize = 12.sp,
-                    color = TextSecondary
-                )
-            }
-        }
-
-        // Raw Quote Box
-        if (capsule.rawTranscript.isNotBlank()) {
-            Spacer(modifier = Modifier.height(8.dp))
-            LiquidGlassTile(modifier = Modifier.fillMaxWidth()) {
+            // Action Item Box
+            GlassSection(modifier = Modifier.fillMaxWidth()) {
                 Row(
-                    modifier = Modifier.padding(2.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    Text("ACTION ITEM", fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                        color = GlassColors.TextMuted, letterSpacing = 0.8.sp)
+                    if (capsule.aiDeadline.isNotBlank()) {
+                        GlassBadge(
+                            text = capsule.aiDeadline,
+                            tintColor = GlassColors.GlassAmber,
+                            textColor = GlassColors.AccentAmber
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                val displayAction = if (capsule.aiActionItem.isNotBlank()) capsule.aiActionItem else capsule.taskSummary
+                Text(displayAction, fontSize = 15.sp, fontWeight = FontWeight.Bold,
+                    color = GlassColors.TextPrimary, lineHeight = 22.sp)
+                if (capsule.aiUrgencyReason.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text("Context: ${capsule.aiUrgencyReason}", fontSize = 12.sp, color = GlassColors.TextSecondary)
+                }
+            }
+
+            // Raw Quote
+            if (capsule.rawTranscript.isNotBlank()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                GlassSection(modifier = Modifier.fillMaxWidth()) {
                     Text(
                         text = "\"${capsule.rawTranscript}\"",
-                        fontSize = 12.sp,
-                        color = TextSecondary,
-                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                        fontSize = 12.sp, color = GlassColors.TextSecondary,
+                        fontStyle = FontStyle.Italic
                     )
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-        // Work Context Toggle
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TextButton(
-                onClick = { showContextDetails = !showContextDetails },
-                contentPadding = PaddingValues(0.dp)
+            // Work context toggle
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = if (showContextDetails) "Hide Pre-Interruption Context" else "View Pre-Interruption Context",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = TextPrimary
-                )
-            }
-
-            Box(
-                modifier = Modifier
-                    .size(28.dp)
-                    .clip(CircleShape)
-                    .liquidPressEffect { onDelete(capsule.id) },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.DeleteOutline,
-                    contentDescription = "Delete",
-                    tint = AccentRed,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-        }
-
-        AnimatedVisibility(visible = showContextDetails) {
-            LiquidGlassTile(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 4.dp, bottom = 8.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(2.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                TextButton(
+                    onClick = { showContextDetails = !showContextDetails },
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
                 ) {
+                    Text(
+                        text = if (showContextDetails) "Hide Pre-Interruption Context" else "View Pre-Interruption Context",
+                        fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = GlassColors.TextPrimary
+                    )
+                }
+                IconButton(onClick = { onDelete(capsule.id) }, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.Default.DeleteOutline, contentDescription = "Delete",
+                        tint = GlassColors.AccentRed, modifier = Modifier.size(18.dp))
+                }
+            }
+
+            AnimatedVisibility(visible = showContextDetails) {
+                GlassSection(modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp)) {
                     Text(
                         text = "Location: ${capsule.contextSnippet}",
                         fontFamily = FontFamily.Monospace,
-                        fontSize = 12.sp,
-                        color = TextPrimary
+                        fontSize = 12.sp, color = GlassColors.TextPrimary
                     )
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-        // Action Buttons
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            LiquidGlassButton(
-                onClick = {
-                    val joviSync = com.auradesk.guard.notes.JoviNotesSyncManager.getInstance(context)
-                    joviSync.syncInterruptionToNotes(capsule, launchChooser = true)
-                    onSaveToNotes(capsule.id)
-                },
-                isPrimary = !(capsule.status == "SAVED_TO_NOTES" || capsule.joviSynced),
-                modifier = Modifier.weight(1.4f),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text(
-                    text = if (capsule.status == "SAVED_TO_NOTES" || capsule.joviSynced) "Saved to Notes" else "Save to Vivo Notes",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = if (capsule.status == "SAVED_TO_NOTES" || capsule.joviSynced) AccentGreen else PureWhite
+            // Action Buttons
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                GlassButton(
+                    text = if (isSaved) "Saved to Notes" else "Save to Vivo Notes",
+                    onClick = {
+                        val joviSync = JoviNotesSyncManager.getInstance(context)
+                        joviSync.syncInterruptionToNotes(capsule, launchChooser = true)
+                        onSaveToNotes(capsule.id)
+                    },
+                    modifier = Modifier.weight(1.4f),
+                    tintColor = if (isSaved) GlassColors.GlassGreen else Color.Transparent,
+                    textColor = if (isSaved) GlassColors.AccentGreen else GlassColors.TextPrimary,
+                    isPrimary = !isSaved
+                )
+                GlassButton(
+                    text = "Dismiss",
+                    onClick = { onDismiss(capsule.id) },
+                    modifier = Modifier.weight(0.8f)
                 )
             }
 
-            LiquidGlassButton(
-                onClick = { onDismiss(capsule.id) },
-                isPrimary = false,
-                modifier = Modifier.weight(0.8f),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text("Dismiss", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                Text("Shake device 3× to incinerate all records", fontSize = 11.sp, color = GlassColors.TextMuted)
             }
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        // Shake hint
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Shake device 3 times to incinerate",
-                fontSize = 11.sp,
-                color = TextMuted
-            )
         }
     }
 }
