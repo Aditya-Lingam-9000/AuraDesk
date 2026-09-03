@@ -33,6 +33,8 @@ fun GuardArmedScreen(onDisarm: () -> Unit) {
     val deepWorkState by GuardService.liveDeepWork.collectAsState()
     val radar by GuardService.liveRadar.collectAsState()
     val latestHapticAlert by GuardService.latestHapticAlert.collectAsState()
+    val audioCapsule by GuardService.liveAudioCapsule.collectAsState()
+    val savedNotes by GuardService.liveInterruptions.collectAsState()
 
     var elapsedSeconds by remember { mutableStateOf(0L) }
     LaunchedEffect(Unit) {
@@ -77,7 +79,7 @@ fun GuardArmedScreen(onDisarm: () -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFF000000))
-            .padding(28.dp)
+            .padding(24.dp)
     ) {
         // Ambient glow canvas
         Canvas(modifier = Modifier.fillMaxSize()) {
@@ -101,7 +103,7 @@ fun GuardArmedScreen(onDisarm: () -> Unit) {
             // Header Top
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(top = 16.dp)
+                modifier = Modifier.padding(top = 12.dp)
             ) {
                 Text(
                     text = "AURADESK",
@@ -123,11 +125,11 @@ fun GuardArmedScreen(onDisarm: () -> Unit) {
             ) {
                 Text(
                     text = formattedTime,
-                    fontSize = 64.sp, fontWeight = FontWeight.Bold,
+                    fontSize = 60.sp, fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
                     color = Color(0xFFFFFFFF), letterSpacing = (-1).sp
                 )
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -140,7 +142,7 @@ fun GuardArmedScreen(onDisarm: () -> Unit) {
                     )
                 }
 
-                Spacer(modifier = Modifier.height(18.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
                 // Live Perimeter Vision Radar Status Pill
                 val (zoneText, zoneColor, zoneBg) = when (radar.zone) {
@@ -190,7 +192,41 @@ fun GuardArmedScreen(onDisarm: () -> Unit) {
                     )
                 }
 
-                Spacer(modifier = Modifier.height(18.dp))
+                // Live Mic Recording Pill (Active during 10s capsule capture)
+                AnimatedVisibility(
+                    visible = audioCapsule.isRecording,
+                    enter = fadeIn(tween(200)) + expandVertically(),
+                    exit = fadeOut(tween(250)) + shrinkVertically()
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(Color(0x33EF4444))
+                                .border(1.2.dp, Color(0xFFEF4444).copy(alpha = 0.8f), RoundedCornerShape(20.dp))
+                                .padding(horizontal = 14.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFFEF4444))
+                            )
+                            Text(
+                                text = "🎙️ Recording Voice Capsule (${audioCapsule.remainingSeconds}s) • Speak Now",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFFCA5A5),
+                                letterSpacing = 0.3.sp
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
 
                 // Temporary Vibration Alert Tag (Appears only on haptic trigger, auto-vanishes after 3.5s)
                 AnimatedVisibility(
@@ -246,45 +282,141 @@ fun GuardArmedScreen(onDisarm: () -> Unit) {
                 }
             }
 
-            // Bottom: Glass Disarm Button
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 12.dp)
-                    .height(48.dp)
-                    .drawBehind {
-                        val cornerPx = 10.dp.toPx()
-                        val rrect = RoundRect(Rect(Offset.Zero, size), CornerRadius(cornerPx))
-                        val path = Path().apply { addRoundRect(rrect) }
-                        drawPath(path, color = Color(0xFF18181B))
-                        drawLine(
-                            color = Color(0x55FFFFFF),
-                            start = Offset(cornerPx, 1.5f),
-                            end = Offset(size.width - cornerPx, 1.5f),
-                            strokeWidth = 1f, cap = StrokeCap.Round
-                        )
-                        clipPath(path) { drawGlassShimmer(shimmerOffset, alpha = 0.15f) }
-                        drawPath(path, color = Color(0x33FFFFFF), style = Stroke(width = 1.dp.toPx()))
-                    }
-                    .clickable(onClick = onDisarm),
-                contentAlignment = Alignment.Center
+            // Bottom Section: Captured Notes List + Glass Disarm Button
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                // List of Saved Notes (shows one by one as they are captured)
+                if (savedNotes.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "CAPTURED NOTES (${savedNotes.size})",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF94A3B8),
+                            letterSpacing = 1.5.sp
+                        )
+                        Text(
+                            text = "OLED Silent Sanctuary",
+                            fontSize = 10.sp,
+                            color = Color(0xFF475569)
+                        )
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 150.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        savedNotes.take(4).forEach { note ->
+                            val noteColor = if (note.isUrgent) Color(0xFFEF4444) else Color(0xFF38BDF8)
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color(0xFF0D0D11))
+                                    .border(1.dp, noteColor.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Text(
+                                        text = if (note.isUrgent) "🚨" else "📌",
+                                        fontSize = 13.sp
+                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        val displayAction = if (note.aiActionItem.isNotBlank()) {
+                                            note.aiActionItem
+                                        } else {
+                                            note.taskSummary
+                                        }
+                                        Text(
+                                            text = displayAction,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color(0xFFF1F5F9),
+                                            maxLines = 2
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "${note.personName} • ${note.distanceZone}",
+                                                fontSize = 10.sp,
+                                                color = Color(0xFF94A3B8)
+                                            )
+                                            if (note.aiDeadline.isNotBlank()) {
+                                                Text(
+                                                    text = "⏰ ${note.aiDeadline}",
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFFFBBF24)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
+
+                // Glass Disarm Button
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp)
+                        .height(48.dp)
+                        .drawBehind {
+                            val cornerPx = 10.dp.toPx()
+                            val rrect = RoundRect(Rect(Offset.Zero, size), CornerRadius(cornerPx))
+                            val path = Path().apply { addRoundRect(rrect) }
+                            drawPath(path, color = Color(0xFF18181B))
+                            drawLine(
+                                color = Color(0x55FFFFFF),
+                                start = Offset(cornerPx, 1.5f),
+                                end = Offset(size.width - cornerPx, 1.5f),
+                                strokeWidth = 1f, cap = StrokeCap.Round
+                            )
+                            clipPath(path) { drawGlassShimmer(shimmerOffset, alpha = 0.15f) }
+                            drawPath(path, color = Color(0x33FFFFFF), style = Stroke(width = 1.dp.toPx()))
+                        }
+                        .clickable(onClick = onDisarm),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.LockOpen,
-                        contentDescription = null,
-                        tint = Color(0xFFE5E7EB),
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Text(
-                        "Disarm Focus Guard",
-                        color = Color(0xFFE5E7EB),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.LockOpen,
+                            contentDescription = null,
+                            tint = Color(0xFFE5E7EB),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            "Disarm Focus Guard",
+                            color = Color(0xFFE5E7EB),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                 }
             }
         }

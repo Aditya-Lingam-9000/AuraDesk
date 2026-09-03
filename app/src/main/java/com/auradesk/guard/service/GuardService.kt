@@ -71,6 +71,9 @@ class GuardService : LifecycleService() {
         private val _liveSynthesizedTask = MutableStateFlow<com.auradesk.guard.llm.SummarizedTask?>(null)
         val liveSynthesizedTask: StateFlow<com.auradesk.guard.llm.SummarizedTask?> = _liveSynthesizedTask.asStateFlow()
 
+        private val _liveInterruptions = MutableStateFlow<List<com.auradesk.guard.data.InterruptionEntity>>(emptyList())
+        val liveInterruptions: StateFlow<List<com.auradesk.guard.data.InterruptionEntity>> = _liveInterruptions.asStateFlow()
+
         private var joviNotesSyncManagerInstance: com.auradesk.guard.notes.JoviNotesSyncManager? = null
 
         fun getJoviNotesSyncManager(context: Context): com.auradesk.guard.notes.JoviNotesSyncManager {
@@ -312,6 +315,11 @@ class GuardService : LifecycleService() {
         audioCapsuleManagerInstance = audioCapsuleManager
         cameraRadarManager = com.auradesk.guard.vision.CameraRadarManager(this, detector = radarDetector)
         repository = com.auradesk.guard.data.InterruptionRepository.getInstance(this)
+        serviceScope.launch {
+            repository.allInterruptions.collect { list ->
+                _liveInterruptions.value = list
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -446,7 +454,12 @@ class GuardService : LifecycleService() {
                         closestZoneInVisit = com.auradesk.guard.vision.RadarZone.CLOSE_05M
                         if (lastZoneVibrated != com.auradesk.guard.vision.RadarZone.CLOSE_05M || now - lastVibrationTime > 6000L) {
                             Log.i(TAG, "🚨 Triggering Real-Time Urgent Haptic Whisper (0.5m)")
-                            feedbackManager.playHapticWhisperUrgent()
+                            // If actively recording speech, soften vibration to avoid acoustic mic rattle
+                            if (!audioCapsuleManager.capsuleState.value.isRecording) {
+                                feedbackManager.playHapticWhisperUrgent()
+                            } else {
+                                feedbackManager.playHapticWhisperLow()
+                            }
                             lastZoneVibrated = com.auradesk.guard.vision.RadarZone.CLOSE_05M
                             lastVibrationTime = now
                             _latestHapticAlert.value = HapticAlert(
@@ -457,8 +470,8 @@ class GuardService : LifecycleService() {
                             )
                         }
 
-                        // Autonomous 10s Capsule Trigger on 0.5m Approach
-                        if (!audioCapsuleManager.capsuleState.value.isRecording) {
+                        // Autonomous 10s Capsule Trigger on 0.5m Approach (if not already recording)
+                        if (!audioCapsuleManager.capsuleState.value.isRecording && !hasCapturedCapsuleInCurrentVisit) {
                             deepWorkDetector.pauseListening()
                             hasCapturedCapsuleInCurrentVisit = true
                             audioCapsuleManager.start10SecCapsuleCapture("Radar 0.5m Proximity")
@@ -469,7 +482,9 @@ class GuardService : LifecycleService() {
                         }
                         if (lastZoneVibrated == com.auradesk.guard.vision.RadarZone.NONE || now - lastVibrationTime > 7000L) {
                             Log.i(TAG, "🔔 Triggering Real-Time Medium Haptic Whisper (2.0m approaching)")
-                            feedbackManager.playHapticWhisperMedium()
+                            if (!audioCapsuleManager.capsuleState.value.isRecording) {
+                                feedbackManager.playHapticWhisperMedium()
+                            }
                             lastZoneVibrated = com.auradesk.guard.vision.RadarZone.MID_2M
                             lastVibrationTime = now
                             _latestHapticAlert.value = HapticAlert(
@@ -479,6 +494,13 @@ class GuardService : LifecycleService() {
                                 timestamp = now
                             )
                         }
+
+                        // Autonomous 10s Capsule Trigger on 2.0m Approach (if not already recording)
+                        if (!audioCapsuleManager.capsuleState.value.isRecording && !hasCapturedCapsuleInCurrentVisit) {
+                            deepWorkDetector.pauseListening()
+                            hasCapturedCapsuleInCurrentVisit = true
+                            audioCapsuleManager.start10SecCapsuleCapture("Radar 2.0m Approach")
+                        }
                     }
                 } else if (visitStartTime > 0L) {
                     // Person not visible in current frame: require 3.0s continuous absence before concluding visit
@@ -486,13 +508,15 @@ class GuardService : LifecycleService() {
                         absentSinceTime = now
                     }
                     if (now - absentSinceTime >= 3000L) {
+                        // DO NOT interrupt active recording capsule in flight!
+                        if (audioCapsuleManager.capsuleState.value.isRecording) {
+                            return@collect
+                        }
+
                         val durationSec = kotlin.math.max(1L, (now - visitStartTime - 3000L) / 1000L)
                         Log.i(TAG, "Real-time visit ended: duration=${durationSec}s, closestZone=${closestZoneInVisit.label}")
 
-                        // Finish active recording capsule if in flight
-                        if (audioCapsuleManager.capsuleState.value.isRecording) {
-                            audioCapsuleManager.finishCapsuleCapture()
-                        } else if (durationSec >= 2L && !hasCapturedCapsuleInCurrentVisit) {
+                        if (durationSec >= 2L && !hasCapturedCapsuleInCurrentVisit) {
                             val distanceStr = if (closestZoneInVisit == com.auradesk.guard.vision.RadarZone.CLOSE_05M) "0.5m (At Desk)" else "2.0m (Approached)"
                             val taskDesc = if (closestZoneInVisit == com.auradesk.guard.vision.RadarZone.CLOSE_05M) {
                                 "Visitor arrived at desk for ${durationSec}s during focus session"
