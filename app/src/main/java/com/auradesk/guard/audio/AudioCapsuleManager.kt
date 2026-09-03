@@ -40,8 +40,14 @@ class AudioCapsuleManager(private val context: Context) {
     private val _capsuleState = MutableStateFlow(AudioCapsuleState())
     val capsuleState: StateFlow<AudioCapsuleState> = _capsuleState.asStateFlow()
 
-    private val keywordSpotter = KeywordSpotter()
+    private val keywordSpotter = KeywordSpotter(context)
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    fun setUserName(name: String) {
+        keywordSpotter.setUserName(name)
+    }
+
+    fun getUserName(): String = keywordSpotter.getUserName()
 
     private var audioRecord: AudioRecord? = null
     private var recordingJob: Job? = null

@@ -47,12 +47,53 @@ fun DashboardScreen(onReplayTour: () -> Unit = {}) {
     val isArmed   by GuardService.isArmed.collectAsState()
     val sensors   by GuardService.liveSensors.collectAsState()
 
+    val prefs = remember { context.getSharedPreferences("auradesk_prefs", Context.MODE_PRIVATE) }
+    var activeName by remember { mutableStateOf(prefs.getString("user_name", "Arjun") ?: "Arjun") }
+    var showNameDialog by remember { mutableStateOf(false) }
+    var editedName by remember { mutableStateOf(activeName) }
+
     var selectedTab    by remember { mutableStateOf(DashboardTab.FOCUS) }
     var showAodPreview by remember { mutableStateOf(false) }
 
     BackHandler(enabled = selectedTab != DashboardTab.FOCUS || showAodPreview) {
         if (showAodPreview) showAodPreview = false
         else if (selectedTab != DashboardTab.FOCUS) selectedTab = DashboardTab.FOCUS
+    }
+
+    if (showNameDialog) {
+        AlertDialog(
+            onDismissRequest = { showNameDialog = false },
+            title = { Text("Update Call-Sign", fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text("The bodyguard triggers priority capture when a visitor calls this name.", fontSize = 13.sp, color = GlassColors.TextSecondary)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = editedName,
+                        onValueChange = { editedName = it },
+                        singleLine = true,
+                        placeholder = { Text("e.g. Arjun") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val finalName = editedName.trim().ifBlank { "Arjun" }
+                    prefs.edit().putString("user_name", finalName).apply()
+                    activeName = finalName
+                    GuardService.ensureAudioCapsuleManager(context).setUserName(finalName)
+                    showNameDialog = false
+                }) {
+                    Text("Save", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showNameDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     val permissionsToRequest = buildList {
@@ -105,6 +146,19 @@ fun DashboardScreen(onReplayTour: () -> Unit = {}) {
                         }
                     },
                     actions = {
+                        Box(
+                            modifier = Modifier.clickable {
+                                editedName = activeName
+                                showNameDialog = true
+                            }
+                        ) {
+                            GlassBadge(
+                                text = "Callsign: $activeName",
+                                tintColor = GlassColors.GlassGreen,
+                                textColor = GlassColors.AccentGreen
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
                         IconButton(onClick = onReplayTour) {
                             Icon(Icons.Default.HelpOutline, contentDescription = "Help", tint = GlassColors.TextSecondary)
                         }

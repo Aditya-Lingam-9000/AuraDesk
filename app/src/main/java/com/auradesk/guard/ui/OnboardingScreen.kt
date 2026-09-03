@@ -40,7 +40,10 @@ data class OnboardingStep(
 @Composable
 fun OnboardingScreen(onFinish: () -> Unit) {
     val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("auradesk_prefs", Context.MODE_PRIVATE) }
     var currentStepIndex by remember { mutableStateOf(0) }
+    var userNameInput by remember { mutableStateOf(prefs.getString("user_name", "Arjun") ?: "Arjun") }
+    var voiceSamplesRecorded by remember { mutableStateOf(0) }
 
     val steps = remember {
         listOf(
@@ -49,21 +52,28 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                 subtitle = "OPTICAL & INERTIAL SENSOR FUSION",
                 description = "Place your device face-down at the edge of your desk. AuraDesk activates low-power optical sensors to automatically establish and guard your deep work focus zone.",
                 icon = Icons.Default.Shield,
-                badgeLabel = "STEP 1 OF 3"
+                badgeLabel = "STEP 1 OF 4"
             ),
             OnboardingStep(
                 title = "Proximity Radar & Haptics",
                 subtitle = "SILENT PERIMETER DETECTION",
                 description = "Monitors approaching visitors within a 2-meter radius using on-device vision, delivering silent subconscious haptic cues before your concentration is interrupted.",
                 icon = Icons.Default.Radar,
-                badgeLabel = "STEP 2 OF 3"
+                badgeLabel = "STEP 2 OF 4"
             ),
             OnboardingStep(
-                title = "Offline Action Synthesis",
-                subtitle = "AIR-GAPPED ON-DEVICE INTELLIGENCE",
-                description = "Captures brief offline audio capsules, synthesizes actionable tasks using local intelligence, and synchronizes with Vivo Notes — zero network exposure.",
-                icon = Icons.Default.Psychology,
-                badgeLabel = "STEP 3 OF 3"
+                title = "Hardware Permissions",
+                subtitle = "AIR-GAPPED SENSORS & PRIVACY",
+                description = "AuraDesk operates with zero internet permissions. Camera, Microphone, and Notification access are required strictly for local on-device sensor fusion.",
+                icon = Icons.Default.Security,
+                badgeLabel = "STEP 3 OF 4"
+            ),
+            OnboardingStep(
+                title = "Call-Sign & Voice Keyword",
+                subtitle = "STAGE 2 KEYWORD SPOTTING",
+                description = "Register your name so the desk bodyguard recognizes when a colleague approaches and calls your name specifically.",
+                icon = Icons.Default.RecordVoiceOver,
+                badgeLabel = "STEP 4 OF 4"
             )
         )
     }
@@ -205,6 +215,88 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                         }
                     }
                 }
+
+                // Call-Sign & Voice Calibration on Step 3
+                if (currentStepIndex == 3) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    GlassCard(
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                text = "Your Name / Call-Sign",
+                                fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                                color = GlassColors.TextSecondary
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            OutlinedTextField(
+                                value = userNameInput,
+                                onValueChange = { userNameInput = it },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                placeholder = { Text("e.g. Arjun") },
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = GlassColors.AccentGreen,
+                                    unfocusedBorderColor = Color(0x33000000)
+                                )
+                            )
+
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Text(
+                                text = "3-Sample Voice Calibration",
+                                fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                                color = GlassColors.TextSecondary
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                for (sampleIdx in 1..3) {
+                                    val isCalibrated = voiceSamplesRecorded >= sampleIdx
+                                    GlassCard(
+                                        modifier = Modifier.weight(1f),
+                                        tintColor = if (isCalibrated) GlassColors.GlassGreen else Color(0x15000000)
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Icon(
+                                                imageVector = if (isCalibrated) Icons.Default.CheckCircle else Icons.Default.Mic,
+                                                contentDescription = null,
+                                                tint = if (isCalibrated) GlassColors.AccentGreen else GlassColors.TextMuted,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text(
+                                                text = "Sample $sampleIdx",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = if (isCalibrated) GlassColors.AccentGreen else GlassColors.TextMuted
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+                            GlassButton(
+                                text = if (voiceSamplesRecorded < 3) "Record Voice Sample (${voiceSamplesRecorded + 1}/3)" else "Voice Calibrated ✓",
+                                onClick = {
+                                    if (voiceSamplesRecorded < 3) {
+                                        voiceSamplesRecorded++
+                                    } else {
+                                        voiceSamplesRecorded = 0
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                isPrimary = voiceSamplesRecorded < 3
+                            )
+                        }
+                    }
+                }
             }
 
             // Bottom Navigation Row
@@ -247,8 +339,12 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                             if (currentStepIndex < steps.size - 1) {
                                 currentStepIndex++
                             } else {
-                                val prefs = context.getSharedPreferences("auradesk_prefs", Context.MODE_PRIVATE)
-                                prefs.edit().putBoolean("has_completed_onboarding", true).apply()
+                                val finalName = userNameInput.trim().ifBlank { "Arjun" }
+                                prefs.edit()
+                                    .putString("user_name", finalName)
+                                    .putBoolean("has_completed_onboarding", true)
+                                    .apply()
+                                com.auradesk.guard.service.GuardService.ensureAudioCapsuleManager(context).setUserName(finalName)
                                 onFinish()
                             }
                         },
