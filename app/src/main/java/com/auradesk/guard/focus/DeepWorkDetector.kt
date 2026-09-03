@@ -86,6 +86,36 @@ class DeepWorkDetector(private val context: Context) {
         Log.i(TAG, "Stopped DeepWorkDetector")
     }
 
+    /**
+     * Temporarily pause audio recording so SpeechRecognizer has exclusive mic access
+     */
+    fun pauseListening() {
+        if (!isListening) return
+        recordingJob?.cancel()
+        try {
+            audioRecord?.stop()
+            audioRecord?.release()
+            audioRecord = null
+        } catch (e: Exception) {
+            Log.e(TAG, "Error pausing audio record", e)
+        }
+        _deepWorkState.value = _deepWorkState.value.copy(isAudioListening = false)
+        Log.i(TAG, "Paused DeepWorkDetector microphone access for speech capsule")
+    }
+
+    /**
+     * Resume audio recording once SpeechRecognizer finishes
+     */
+    fun resumeListening() {
+        if (!isListening) return
+        recordingJob?.cancel()
+        recordingJob = scope.launch(Dispatchers.IO) {
+            runAudioLoop()
+        }
+        _deepWorkState.value = _deepWorkState.value.copy(isAudioListening = true)
+        Log.i(TAG, "Resumed DeepWorkDetector microphone listening")
+    }
+
     fun setEnvironmentProfile(profile: EnvironmentProfile) {
         currentProfile = profile
         _deepWorkState.value = _deepWorkState.value.copy(environmentProfile = profile)

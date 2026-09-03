@@ -599,10 +599,18 @@ fun InterruptionHistoryCard(context: Context) {
                                         fontWeight = FontWeight.Bold, fontSize = 13.sp, color = GlassColors.TextPrimary
                                     )
                                     Spacer(modifier = Modifier.height(2.dp))
+                                    val actionText = if (capsule.aiActionItem.isNotBlank()) capsule.aiActionItem else capsule.taskSummary
                                     Text(
-                                        text = if (capsule.aiActionItem.isNotBlank()) capsule.aiActionItem else capsule.taskSummary,
+                                        text = actionText,
                                         fontSize = 12.sp, color = GlassColors.TextSecondary, maxLines = 2
                                     )
+                                    if (capsule.aiDeadline.isNotBlank()) {
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = "⏰ ${capsule.aiDeadline}",
+                                            fontSize = 11.sp, color = GlassColors.AccentAmber, fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
                                 }
                                 IconButton(
                                     onClick = { coroutineScope.launch { repository.delete(capsule.id) } },

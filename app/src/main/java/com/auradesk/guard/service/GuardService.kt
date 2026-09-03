@@ -188,6 +188,7 @@ class GuardService : LifecycleService() {
         }
 
         fun startAudioCapsule(context: Context? = null, durationSec: Int = 10) {
+            deepWorkDetectorInstance?.pauseListening()
             if (context != null) {
                 val manager = ensureAudioCapsuleManager(context)
                 manager.start10SecCapsuleCapture("Manual / Test Trigger")
@@ -295,6 +296,7 @@ class GuardService : LifecycleService() {
     // Real-time visit tracking state
     private var visitStartTime: Long = 0L
     private var absentSinceTime: Long = 0L
+    private var hasCapturedCapsuleInCurrentVisit: Boolean = false
     private var lastZoneVibrated: com.auradesk.guard.vision.RadarZone = com.auradesk.guard.vision.RadarZone.NONE
     private var lastVibrationTime: Long = 0L
     private var closestZoneInVisit: com.auradesk.guard.vision.RadarZone = com.auradesk.guard.vision.RadarZone.NONE
@@ -379,8 +381,28 @@ class GuardService : LifecycleService() {
 
         // Automatic Interruption Capsule Storage Bridge
         audioCapsuleManager.onCapsuleRecorded = { transcript, durationSec, isUrgent ->
+            deepWorkDetector.resumeListening()
+            hasCapturedCapsuleInCurrentVisit = true
+
+            val isRealSpeech = transcript.isNotBlank() &&
+                    !transcript.startsWith("Visitor approached desk") &&
+                    !transcript.startsWith("Listening...")
+
+            val synthesized = if (isRealSpeech) {
+                capsuleSynthesizer.synthesize(transcript, "Desk Visitor")
+            } else {
+                com.auradesk.guard.llm.SummarizedTask(
+                    actionItem = "Desk visitor for ${durationSec}s",
+                    rawTranscript = "",
+                    urgencyLevel = if (isUrgent) com.auradesk.guard.llm.UrgencyLevel.CRITICAL else com.auradesk.guard.llm.UrgencyLevel.LOW
+                )
+            }
+            _liveSynthesizedTask.value = synthesized
+
             val distanceStr = if (closestZoneInVisit == com.auradesk.guard.vision.RadarZone.CLOSE_05M) "0.5m (At Desk)" else "2.0m (Approached)"
-            val summaryTitle = if (transcript.isNotBlank() && transcript.length > 10) {
+            val summaryTitle = if (isRealSpeech && synthesized.actionItem.isNotBlank()) {
+                synthesized.actionItem
+            } else if (isRealSpeech) {
                 "\"$transcript\""
             } else {
                 "Desk visitor at $distanceStr for ${durationSec}s"
@@ -391,12 +413,17 @@ class GuardService : LifecycleService() {
                     com.auradesk.guard.data.InterruptionEntity(
                         personName = "Desk Visitor",
                         taskSummary = summaryTitle,
+                        aiActionItem = synthesized.actionItem,
+                        aiDeadline = synthesized.deadlineOrTime ?: "",
+                        aiUrgencyReason = synthesized.urgencyReason ?: "",
+                        targetComponent = synthesized.targetComponent ?: "",
                         rawTranscript = transcript,
-                        hasVoiceTranscript = transcript.isNotBlank(),
+                        hasVoiceTranscript = isRealSpeech,
                         contextSnippet = "Editing main.py at line 124",
                         distanceZone = distanceStr,
                         durationSec = durationSec,
-                        isUrgent = isUrgent
+                        isUrgent = isUrgent || synthesized.urgencyLevel == com.auradesk.guard.llm.UrgencyLevel.CRITICAL,
+                        status = "NEW"
                     )
                 )
             }
@@ -432,6 +459,8 @@ class GuardService : LifecycleService() {
 
                         // Autonomous 10s Capsule Trigger on 0.5m Approach
                         if (!audioCapsuleManager.capsuleState.value.isRecording) {
+                            deepWorkDetector.pauseListening()
+                            hasCapturedCapsuleInCurrentVisit = true
                             audioCapsuleManager.start10SecCapsuleCapture("Radar 0.5m Proximity")
                         }
                     } else if (radar.zone == com.auradesk.guard.vision.RadarZone.MID_2M && radar.isApproaching) {
@@ -463,7 +492,7 @@ class GuardService : LifecycleService() {
                         // Finish active recording capsule if in flight
                         if (audioCapsuleManager.capsuleState.value.isRecording) {
                             audioCapsuleManager.finishCapsuleCapture()
-                        } else if (durationSec >= 2L && !audioCapsuleManager.capsuleState.value.isRecording) {
+                        } else if (durationSec >= 2L && !hasCapturedCapsuleInCurrentVisit) {
                             val distanceStr = if (closestZoneInVisit == com.auradesk.guard.vision.RadarZone.CLOSE_05M) "0.5m (At Desk)" else "2.0m (Approached)"
                             val taskDesc = if (closestZoneInVisit == com.auradesk.guard.vision.RadarZone.CLOSE_05M) {
                                 "Visitor arrived at desk for ${durationSec}s during focus session"
@@ -487,6 +516,7 @@ class GuardService : LifecycleService() {
 
                         visitStartTime = 0L
                         absentSinceTime = 0L
+                        hasCapturedCapsuleInCurrentVisit = false
                         lastZoneVibrated = com.auradesk.guard.vision.RadarZone.NONE
                         closestZoneInVisit = com.auradesk.guard.vision.RadarZone.NONE
                     }

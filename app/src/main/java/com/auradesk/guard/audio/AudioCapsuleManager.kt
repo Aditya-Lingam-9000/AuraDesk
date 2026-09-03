@@ -117,12 +117,19 @@ class AudioCapsuleManager(private val context: Context) {
             }
 
             override fun onError(error: Int) {
-                Log.w(TAG, "SpeechRecognizer error: $error")
+                Log.w(TAG, "SpeechRecognizer error code: $error")
                 // Restart listening if still in active capsule window
                 if (isRecordingCapsule) {
                     mainHandler.postDelayed({
-                        if (isRecordingCapsule) startNativeRecognizerListening()
-                    }, 500)
+                        if (isRecordingCapsule) {
+                            try {
+                                nativeSpeechRecognizer?.cancel()
+                                startNativeRecognizerListening()
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Error recovering recognizer", e)
+                            }
+                        }
+                    }, 400)
                 }
             }
 
@@ -164,7 +171,15 @@ class AudioCapsuleManager(private val context: Context) {
         mainHandler.post {
             try {
                 if (nativeSpeechRecognizer == null) {
-                    nativeSpeechRecognizer = SpeechRecognizer.createSpeechRecognizer(context).apply {
+                    val recognizer = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+                        SpeechRecognizer.isOnDeviceRecognitionAvailable(context)) {
+                        Log.i(TAG, "Creating On-Device SpeechRecognizer")
+                        SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
+                    } else {
+                        Log.i(TAG, "Creating Standard SpeechRecognizer")
+                        SpeechRecognizer.createSpeechRecognizer(context)
+                    }
+                    nativeSpeechRecognizer = recognizer.apply {
                         setRecognitionListener(createRecognitionListener())
                     }
                 }
@@ -173,13 +188,14 @@ class AudioCapsuleManager(private val context: Context) {
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                     putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                     putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
-                    putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
-                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 3000L)
-                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
+                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 4000L)
+                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 3000L)
+                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1500L)
                 }
 
+                nativeSpeechRecognizer?.cancel()
                 nativeSpeechRecognizer?.startListening(intent)
-                Log.i(TAG, "Started On-Device SpeechRecognizer listening...")
+                Log.i(TAG, "Started SpeechRecognizer listening...")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start native SpeechRecognizer", e)
             }
@@ -443,11 +459,15 @@ class AudioCapsuleManager(private val context: Context) {
     }
 
     private fun extractFinalTranscript(): String {
-        val currentText = _capsuleState.value.livePartialTranscript
+        val currentText = _capsuleState.value.livePartialTranscript.trim()
         if (currentText.isNotBlank() && !currentText.startsWith("Listening...")) {
             return currentText
         }
-        return _capsuleState.value.lastFinalTranscript
+        val lastText = _capsuleState.value.lastFinalTranscript.trim()
+        if (lastText.isNotBlank() && !lastText.startsWith("Listening...")) {
+            return lastText
+        }
+        return ""
     }
 
     private fun parseVoskJsonText(jsonStr: String): String {
