@@ -170,18 +170,24 @@ class AudioCapsuleManager(private val context: Context) {
     private fun startNativeRecognizerListening() {
         mainHandler.post {
             try {
-                if (nativeSpeechRecognizer == null) {
-                    val recognizer = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
-                        SpeechRecognizer.isOnDeviceRecognitionAvailable(context)) {
-                        Log.i(TAG, "Creating On-Device SpeechRecognizer")
-                        SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
-                    } else {
-                        Log.i(TAG, "Creating Standard SpeechRecognizer")
-                        SpeechRecognizer.createSpeechRecognizer(context)
-                    }
-                    nativeSpeechRecognizer = recognizer.apply {
-                        setRecognitionListener(createRecognitionListener())
-                    }
+                // Always destroy stale instances to guarantee fresh mic session
+                try {
+                    nativeSpeechRecognizer?.stopListening()
+                    nativeSpeechRecognizer?.cancel()
+                    nativeSpeechRecognizer?.destroy()
+                } catch (_: Exception) {}
+                nativeSpeechRecognizer = null
+
+                val recognizer = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+                    SpeechRecognizer.isOnDeviceRecognitionAvailable(context)) {
+                    Log.i(TAG, "Creating Fresh On-Device SpeechRecognizer")
+                    SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
+                } else {
+                    Log.i(TAG, "Creating Fresh Standard SpeechRecognizer")
+                    SpeechRecognizer.createSpeechRecognizer(context)
+                }
+                nativeSpeechRecognizer = recognizer.apply {
+                    setRecognitionListener(createRecognitionListener())
                 }
 
                 val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -193,11 +199,10 @@ class AudioCapsuleManager(private val context: Context) {
                     putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1500L)
                 }
 
-                nativeSpeechRecognizer?.cancel()
                 nativeSpeechRecognizer?.startListening(intent)
-                Log.i(TAG, "Started SpeechRecognizer listening...")
+                Log.i(TAG, "Started Fresh SpeechRecognizer listening...")
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to start native SpeechRecognizer", e)
+                Log.e(TAG, "Failed to start fresh SpeechRecognizer", e)
             }
         }
     }
@@ -207,8 +212,12 @@ class AudioCapsuleManager(private val context: Context) {
             try {
                 nativeSpeechRecognizer?.stopListening()
                 nativeSpeechRecognizer?.cancel()
+                nativeSpeechRecognizer?.destroy()
+                nativeSpeechRecognizer = null
+                Log.i(TAG, "Cleanly destroyed native SpeechRecognizer for next session")
             } catch (e: Exception) {
                 Log.e(TAG, "Error stopping native SpeechRecognizer", e)
+                nativeSpeechRecognizer = null
             }
         }
     }

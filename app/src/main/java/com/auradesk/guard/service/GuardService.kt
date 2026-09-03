@@ -300,6 +300,7 @@ class GuardService : LifecycleService() {
     private var visitStartTime: Long = 0L
     private var absentSinceTime: Long = 0L
     private var hasCapturedCapsuleInCurrentVisit: Boolean = false
+    private var lastCapsuleFinishTime: Long = 0L
     private var lastZoneVibrated: com.auradesk.guard.vision.RadarZone = com.auradesk.guard.vision.RadarZone.NONE
     private var lastVibrationTime: Long = 0L
     private var closestZoneInVisit: com.auradesk.guard.vision.RadarZone = com.auradesk.guard.vision.RadarZone.NONE
@@ -450,6 +451,15 @@ class GuardService : LifecycleService() {
                         Log.i(TAG, "Real-time visit started in zone: ${radar.zone.label}")
                     }
 
+                    // If person stepped back to Far (> 2.8m), reset capsule latch so approaching again triggers a new capsule
+                    if (radar.zone == com.auradesk.guard.vision.RadarZone.FAR_5M) {
+                        hasCapturedCapsuleInCurrentVisit = false
+                    }
+
+                    // A capsule can be triggered if not recording and (new visit, stepped away, or 18s elapsed since last capsule)
+                    val canTriggerCapsule = !audioCapsuleManager.capsuleState.value.isRecording &&
+                            (!hasCapturedCapsuleInCurrentVisit || (now - lastCapsuleFinishTime > 18000L))
+
                     if (radar.zone == com.auradesk.guard.vision.RadarZone.CLOSE_05M) {
                         closestZoneInVisit = com.auradesk.guard.vision.RadarZone.CLOSE_05M
                         if (lastZoneVibrated != com.auradesk.guard.vision.RadarZone.CLOSE_05M || now - lastVibrationTime > 6000L) {
@@ -470,10 +480,11 @@ class GuardService : LifecycleService() {
                             )
                         }
 
-                        // Autonomous 10s Capsule Trigger on 0.5m Approach (if not already recording)
-                        if (!audioCapsuleManager.capsuleState.value.isRecording && !hasCapturedCapsuleInCurrentVisit) {
+                        // Autonomous 10s Capsule Trigger on 0.5m Approach
+                        if (canTriggerCapsule) {
                             deepWorkDetector.pauseListening()
                             hasCapturedCapsuleInCurrentVisit = true
+                            lastCapsuleFinishTime = now
                             audioCapsuleManager.start10SecCapsuleCapture("Radar 0.5m Proximity")
                         }
                     } else if (radar.zone == com.auradesk.guard.vision.RadarZone.MID_2M && radar.isApproaching) {
@@ -495,55 +506,50 @@ class GuardService : LifecycleService() {
                             )
                         }
 
-                        // Autonomous 10s Capsule Trigger on 2.0m Approach (if not already recording)
-                        if (!audioCapsuleManager.capsuleState.value.isRecording && !hasCapturedCapsuleInCurrentVisit) {
+                        // Autonomous 10s Capsule Trigger on 2.0m Approach
+                        if (canTriggerCapsule) {
                             deepWorkDetector.pauseListening()
                             hasCapturedCapsuleInCurrentVisit = true
+                            lastCapsuleFinishTime = now
                             audioCapsuleManager.start10SecCapsuleCapture("Radar 2.0m Approach")
                         }
                     }
                 } else if (visitStartTime > 0L) {
-                    // Person not visible in current frame: require 3.0s continuous absence before concluding visit
-                    if (absentSinceTime == 0L) {
-                        absentSinceTime = now
+                    // Person is no longer detected (PersonRadarDetector already held for 2.5s persistence hold)
+                    if (audioCapsuleManager.capsuleState.value.isRecording) {
+                        return@collect
                     }
-                    if (now - absentSinceTime >= 3000L) {
-                        // DO NOT interrupt active recording capsule in flight!
-                        if (audioCapsuleManager.capsuleState.value.isRecording) {
-                            return@collect
+
+                    val durationSec = kotlin.math.max(1L, (now - visitStartTime) / 1000L)
+                    Log.i(TAG, "Real-time visit ended: duration=${durationSec}s, closestZone=${closestZoneInVisit.label}")
+
+                    if (durationSec >= 2L && !hasCapturedCapsuleInCurrentVisit) {
+                        val distanceStr = if (closestZoneInVisit == com.auradesk.guard.vision.RadarZone.CLOSE_05M) "0.5m (At Desk)" else "2.0m (Approached)"
+                        val taskDesc = if (closestZoneInVisit == com.auradesk.guard.vision.RadarZone.CLOSE_05M) {
+                            "Visitor arrived at desk for ${durationSec}s during focus session"
+                        } else {
+                            "Subject approached desk perimeter for ${durationSec}s"
                         }
 
-                        val durationSec = kotlin.math.max(1L, (now - visitStartTime - 3000L) / 1000L)
-                        Log.i(TAG, "Real-time visit ended: duration=${durationSec}s, closestZone=${closestZoneInVisit.label}")
-
-                        if (durationSec >= 2L && !hasCapturedCapsuleInCurrentVisit) {
-                            val distanceStr = if (closestZoneInVisit == com.auradesk.guard.vision.RadarZone.CLOSE_05M) "0.5m (At Desk)" else "2.0m (Approached)"
-                            val taskDesc = if (closestZoneInVisit == com.auradesk.guard.vision.RadarZone.CLOSE_05M) {
-                                "Visitor arrived at desk for ${durationSec}s during focus session"
-                            } else {
-                                "Subject approached desk perimeter for ${durationSec}s"
-                            }
-
-                            serviceScope.launch(Dispatchers.IO) {
-                                repository.insert(
-                                    com.auradesk.guard.data.InterruptionEntity(
-                                        personName = "Desk Visitor",
-                                        taskSummary = taskDesc,
-                                        contextSnippet = "Editing main.py at line 124",
-                                        distanceZone = distanceStr,
-                                        durationSec = durationSec,
-                                        isUrgent = closestZoneInVisit == com.auradesk.guard.vision.RadarZone.CLOSE_05M
-                                    )
+                        serviceScope.launch(Dispatchers.IO) {
+                            repository.insert(
+                                com.auradesk.guard.data.InterruptionEntity(
+                                    personName = "Desk Visitor",
+                                    taskSummary = taskDesc,
+                                    contextSnippet = "Editing main.py at line 124",
+                                    distanceZone = distanceStr,
+                                    durationSec = durationSec,
+                                    isUrgent = closestZoneInVisit == com.auradesk.guard.vision.RadarZone.CLOSE_05M
                                 )
-                            }
+                            )
                         }
-
-                        visitStartTime = 0L
-                        absentSinceTime = 0L
-                        hasCapturedCapsuleInCurrentVisit = false
-                        lastZoneVibrated = com.auradesk.guard.vision.RadarZone.NONE
-                        closestZoneInVisit = com.auradesk.guard.vision.RadarZone.NONE
                     }
+
+                    visitStartTime = 0L
+                    absentSinceTime = 0L
+                    hasCapturedCapsuleInCurrentVisit = false
+                    lastZoneVibrated = com.auradesk.guard.vision.RadarZone.NONE
+                    closestZoneInVisit = com.auradesk.guard.vision.RadarZone.NONE
                 }
             }
         }
@@ -567,6 +573,12 @@ class GuardService : LifecycleService() {
                         deepWorkDetector.stopListening()
                         audioCapsuleManager.stopListening()
                         cameraRadarManager.stopCamera()
+                        visitStartTime = 0L
+                        absentSinceTime = 0L
+                        hasCapturedCapsuleInCurrentVisit = false
+                        lastCapsuleFinishTime = 0L
+                        lastZoneVibrated = com.auradesk.guard.vision.RadarZone.NONE
+                        closestZoneInVisit = com.auradesk.guard.vision.RadarZone.NONE
                     }
                     lastArmedState = faceDown
                 }
@@ -589,6 +601,12 @@ class GuardService : LifecycleService() {
         cameraRadarManager.stopCamera()
         deepWorkDetectorInstance = null
         audioCapsuleManagerInstance = null
+        visitStartTime = 0L
+        absentSinceTime = 0L
+        hasCapturedCapsuleInCurrentVisit = false
+        lastCapsuleFinishTime = 0L
+        lastZoneVibrated = com.auradesk.guard.vision.RadarZone.NONE
+        closestZoneInVisit = com.auradesk.guard.vision.RadarZone.NONE
         sensorCollectJob?.cancel()
         stateCollectJob?.cancel()
         deepWorkCollectJob?.cancel()
