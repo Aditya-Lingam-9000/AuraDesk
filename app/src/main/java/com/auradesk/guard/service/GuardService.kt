@@ -22,6 +22,8 @@ import com.auradesk.guard.utils.FeedbackManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -294,6 +296,7 @@ class GuardService : LifecycleService() {
     private var deepWorkCollectJob: Job? = null
     private var audioCapsuleCollectJob: Job? = null
     private var radarCollectJob: Job? = null
+    private var autoPruneJob: Job? = null
     private var lastArmedState = false
 
     // Real-time visit tracking state
@@ -385,6 +388,19 @@ class GuardService : LifecycleService() {
         audioCapsuleCollectJob = serviceScope.launch {
             audioCapsuleManager.capsuleState.collect { audioState ->
                 _liveAudioCapsule.value = audioState
+            }
+        }
+
+        // Phase 5: Periodic 1-Hour Auto-Pruning Worker for old interruption capsules
+        autoPruneJob?.cancel()
+        autoPruneJob = serviceScope.launch(Dispatchers.IO) {
+            while (_isRunning.value && isActive) {
+                try {
+                    repository.autoExpireOldEntries(maxAgeHours = 1)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Auto-expire notes note: ${e.message}")
+                }
+                delay(15 * 60 * 1000L) // Check every 15 minutes for entries older than 1 hour
             }
         }
 
@@ -567,6 +583,14 @@ class GuardService : LifecycleService() {
                         if (ContextCompat.checkSelfPermission(this@GuardService, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
                             cameraRadarManager.startCamera(this@GuardService)
                         }
+                        // Phase 5: Cleanly auto-expire any old notes (> 1 hr) upon fresh session arm
+                        serviceScope.launch(Dispatchers.IO) {
+                            try {
+                                repository.autoExpireOldEntries(maxAgeHours = 1)
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Arming auto-expire note: ${e.message}")
+                            }
+                        }
                     } else if (lastArmedState) {
                         Log.i(TAG, "Triggering Disarm Audio/Haptic Feedback")
                         feedbackManager.playDisarmFeedback()
@@ -612,6 +636,8 @@ class GuardService : LifecycleService() {
         deepWorkCollectJob?.cancel()
         audioCapsuleCollectJob?.cancel()
         radarCollectJob?.cancel()
+        autoPruneJob?.cancel()
+        autoPruneJob = null
         stopForeground(STOP_FOREGROUND_REMOVE)
         Log.i(TAG, "GuardService stopped")
     }
