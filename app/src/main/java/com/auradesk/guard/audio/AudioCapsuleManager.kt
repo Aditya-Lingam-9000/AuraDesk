@@ -104,13 +104,12 @@ class AudioCapsuleManager(private val context: Context) {
     private fun createRecognitionListener(): RecognitionListener {
         return object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {
-                Log.i(TAG, "🎤 SpeechRecognizer ready for speech (Chime played!)")
+                Log.i(TAG, "🎤 SpeechRecognizer ready for speech (Start chime played)")
                 _capsuleState.value = _capsuleState.value.copy(
                     isVoiceDetected = true,
                     livePartialTranscript = "Listening... Speak into mic now",
                     capsuleStatus = "RECORDING_CAPSULE"
                 )
-                // Start countdown ONLY when microphone is ready and chime has played
                 startCountdownTimer()
             }
 
@@ -131,30 +130,18 @@ class AudioCapsuleManager(private val context: Context) {
             override fun onBufferReceived(buffer: ByteArray?) {}
 
             override fun onEndOfSpeech() {
-                Log.i(TAG, "Speech ended")
+                Log.i(TAG, "Speech ended (Stop chime played)")
+                _capsuleState.value = _capsuleState.value.copy(livePartialTranscript = "Processing note...")
             }
 
             override fun onError(error: Int) {
                 Log.w(TAG, "SpeechRecognizer error code: $error")
+                // Never re-invoke startListening in error to prevent chime loops
                 if (isRecordingCapsule) {
-                    if (error == SpeechRecognizer.ERROR_CLIENT || error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) {
-                        mainHandler.postDelayed({
-                            if (isRecordingCapsule) {
-                                recreateSpeechRecognizerAndListen()
-                            }
-                        }, 250)
-                    } else if (error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT || error == SpeechRecognizer.ERROR_NO_MATCH) {
-                        // User was silent for a few moments: resume listening smoothly without destroying service
-                        mainHandler.postDelayed({
-                            if (isRecordingCapsule) {
-                                try {
-                                    val intent = createRecognizerIntent()
-                                    nativeSpeechRecognizer?.startListening(intent)
-                                } catch (e: Exception) {
-                                    recreateSpeechRecognizerAndListen()
-                                }
-                            }
-                        }, 100)
+                    if (error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT || error == SpeechRecognizer.ERROR_NO_MATCH) {
+                        finishCapsuleCapture()
+                    } else if (error == SpeechRecognizer.ERROR_CLIENT || error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) {
+                        destroyNativeRecognizer()
                     }
                 }
             }
@@ -164,19 +151,16 @@ class AudioCapsuleManager(private val context: Context) {
                 if (!matches.isNullOrEmpty()) {
                     val text = matches[0]
                     Log.i(TAG, "✅ Speech Recognized Final Result: '$text'")
-                    accumulateTranscript(text)
+                    accumulatedTranscript = text
+                    _capsuleState.value = _capsuleState.value.copy(
+                        livePartialTranscript = text,
+                        lastFinalTranscript = text,
+                        keywordDetected = keywordSpotter.checkKeyword(text)
+                    )
                 }
+                // Utterance finished cleanly: conclude capsule without restarting chimes!
                 if (isRecordingCapsule) {
-                    mainHandler.postDelayed({
-                        if (isRecordingCapsule) {
-                            try {
-                                val intent = createRecognizerIntent()
-                                nativeSpeechRecognizer?.startListening(intent)
-                            } catch (e: Exception) {
-                                Log.w(TAG, "Restart listening after onResults note: ${e.message}")
-                            }
-                        }
-                    }, 100)
+                    finishCapsuleCapture()
                 }
             }
 
@@ -185,7 +169,12 @@ class AudioCapsuleManager(private val context: Context) {
                 if (!matches.isNullOrEmpty()) {
                     val text = matches[0]
                     Log.i(TAG, "📝 Partial Speech: '$text'")
-                    accumulateTranscript(text)
+                    accumulatedTranscript = text
+                    _capsuleState.value = _capsuleState.value.copy(
+                        livePartialTranscript = text,
+                        lastFinalTranscript = text,
+                        keywordDetected = keywordSpotter.checkKeyword(text)
+                    )
                 }
             }
 
@@ -197,10 +186,10 @@ class AudioCapsuleManager(private val context: Context) {
         return Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 10000L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 10000L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 2000L)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 6000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
         }
     }
 
