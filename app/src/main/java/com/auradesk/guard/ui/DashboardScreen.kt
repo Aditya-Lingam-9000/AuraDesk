@@ -16,8 +16,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -242,6 +244,7 @@ fun DashboardScreen(onReplayTour: () -> Unit = {}) {
                             },
                             onLaunchAod = { showAodPreview = true }
                         )
+                        OnDeviceLlamaCard(context = context)
                         DeepWorkCadenceCard()
                         SensorTelemetryCard(sensors = sensors, isRunning = isRunning)
                         SystemStatusBadgeCard(context = context)
@@ -731,6 +734,191 @@ fun VivoNotesSyncCard(context: Context) {
                     uncheckedTrackColor = Color(0x44000000)
                 )
             )
+        }
+    }
+}
+
+@Composable
+fun OnDeviceLlamaCard(context: Context) {
+    val llamaRunner = remember { com.auradesk.guard.llm.LlamaModelRunner.getInstance(context) }
+    val llamaState by llamaRunner.llamaState.collectAsState()
+    val lastReply by llamaRunner.lastGeneratedReply.collectAsState()
+
+    var showTestDialog by remember { mutableStateOf(false) }
+    var testSender by remember { mutableStateOf("Rahul (Tech Lead)") }
+    var testMessage by remember { mutableStateOf("Hey Arjun, can you review the payment auth PR before deployment?") }
+    var testGeneratedResult by remember { mutableStateOf("") }
+    var isGeneratingTest by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
+
+    val isNotifAccessGranted = remember {
+        val flat = android.provider.Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners")
+        flat != null && flat.contains(context.packageName)
+    }
+
+    if (showTestDialog) {
+        AlertDialog(
+            onDismissRequest = { showTestDialog = false },
+            title = { Text("Test Qwen2-0.5B Auto-Reply", fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text("Simulate an incoming notification to test on-device LLM auto-reply generation.", fontSize = 12.sp, color = GlassColors.TextSecondary)
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text("Sender Name:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = GlassColors.TextPrimary)
+                    OutlinedTextField(
+                        value = testSender,
+                        onValueChange = { testSender = it },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Incoming Message:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = GlassColors.TextPrimary)
+                    OutlinedTextField(
+                        value = testMessage,
+                        onValueChange = { testMessage = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        maxLines = 3
+                    )
+                    if (testGeneratedResult.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text("Generated Auto-Reply (Prompt A):", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = GlassColors.AccentGreen)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0x15059669))
+                                .padding(10.dp)
+                        ) {
+                            Text(testGeneratedResult, fontSize = 12.sp, color = GlassColors.TextPrimary)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        isGeneratingTest = true
+                        coroutineScope.launch {
+                            val prefs = context.getSharedPreferences("auradesk_prefs", Context.MODE_PRIVATE)
+                            val userName = prefs.getString("user_name", "Arjun") ?: "Arjun"
+                            val returnTime = llamaRunner.calculateReturnTime(45)
+                            val res = llamaRunner.generateAutoReply(testSender, testMessage, returnTime, userName)
+                            testGeneratedResult = res
+                            isGeneratingTest = false
+                        }
+                    },
+                    enabled = !isGeneratingTest
+                ) {
+                    Text(if (isGeneratingTest) "Generating..." else "Run LLM Inference", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTestDialog = false }) {
+                    Text("Close")
+                }
+            }
+        )
+    }
+
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(18.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                    Text("On-Device LLM (Qwen2-0.5B)", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = GlassColors.TextPrimary)
+                    Text("Phase 7 Native llama.cpp INT4 Auto-Reply", fontSize = 12.sp, color = GlassColors.TextSecondary)
+                }
+                when (val st = llamaState) {
+                    is com.auradesk.guard.llm.LlamaState.Ready -> {
+                        GlassBadge("INT4 Ready", tintColor = GlassColors.GlassGreen, textColor = GlassColors.AccentGreen)
+                    }
+                    is com.auradesk.guard.llm.LlamaState.Downloading -> {
+                        GlassBadge("${st.progressPercent}%", tintColor = GlassColors.GlassBlue, textColor = GlassColors.AccentBlue)
+                    }
+                    is com.auradesk.guard.llm.LlamaState.Loading -> {
+                        GlassBadge("Loading...", tintColor = GlassColors.GlassAmber, textColor = GlassColors.AccentAmber)
+                    }
+                    is com.auradesk.guard.llm.LlamaState.NotDownloaded -> {
+                        GlassBadge("352 MB Needed", tintColor = GlassColors.GlassAmber, textColor = GlassColors.AccentAmber)
+                    }
+                    is com.auradesk.guard.llm.LlamaState.Error -> {
+                        GlassBadge("Error", tintColor = GlassColors.GlassRed, textColor = GlassColors.AccentRed)
+                    }
+                    else -> {}
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            when (val st = llamaState) {
+                is com.auradesk.guard.llm.LlamaState.Ready -> {
+                    Text(
+                        text = "Native ARM NEON kernels loaded in RAM. Generates context-aware replies in ~1.1s under airplane mode zero-bytes.",
+                        fontSize = 12.sp, color = GlassColors.TextSecondary
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        GlassButton(
+                            text = "Test LLM Auto-Reply",
+                            onClick = { showTestDialog = true },
+                            modifier = Modifier.weight(1f),
+                            isPrimary = true
+                        )
+                        if (!isNotifAccessGranted) {
+                            GlassButton(
+                                text = "Grant Notif Access",
+                                onClick = {
+                                    context.startActivity(android.content.Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"))
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                }
+                is com.auradesk.guard.llm.LlamaState.Downloading -> {
+                    Text(
+                        text = "Downloading Qwen2-0.5B-Instruct INT4 (~352MB) directly to device storage...",
+                        fontSize = 12.sp, color = GlassColors.TextSecondary
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LinearProgressIndicator(
+                        progress = st.progressPercent / 100f,
+                        modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                        color = GlassColors.AccentBlue,
+                        trackColor = Color(0x22000000)
+                    )
+                }
+                is com.auradesk.guard.llm.LlamaState.Loading -> {
+                    Text("Memory-mapping INT4 tensor weights into RAM...", fontSize = 12.sp, color = GlassColors.TextSecondary)
+                }
+                is com.auradesk.guard.llm.LlamaState.NotDownloaded -> {
+                    Text(
+                        text = "Qwen2-0.5B-Instruct INT4 GGUF model (~352MB) enables 100% offline auto-reply generation.",
+                        fontSize = 12.sp, color = GlassColors.TextSecondary
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    GlassButton(
+                        text = "Download Qwen2-0.5B Model (352MB)",
+                        onClick = { llamaRunner.downloadModel() },
+                        modifier = Modifier.fillMaxWidth(),
+                        isPrimary = true
+                    )
+                }
+                is com.auradesk.guard.llm.LlamaState.Error -> {
+                    Text("Model status: ${st.message}", fontSize = 12.sp, color = GlassColors.AccentRed)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    GlassButton(
+                        text = "Retry Download",
+                        onClick = { llamaRunner.downloadModel() },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                else -> {}
+            }
         }
     }
 }

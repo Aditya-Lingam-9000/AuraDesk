@@ -62,6 +62,9 @@ dependencies {
     // Offline Speech-to-Text (Vosk STT)
     implementation(libs.vosk.android)
 
+    // On-Device LLM via llama.cpp (Phase 7 Qwen2-0.5B Inference)
+    implementation("org.codeshipping:llama-kotlin-android:0.1.0")
+
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

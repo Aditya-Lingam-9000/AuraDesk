@@ -35,6 +35,7 @@ fun GuardArmedScreen(onDisarm: () -> Unit) {
     val latestHapticAlert by GuardService.latestHapticAlert.collectAsState()
     val audioCapsule by GuardService.liveAudioCapsule.collectAsState()
     val savedNotes by GuardService.liveInterruptions.collectAsState()
+    val digitalNotif by GuardService.liveDigitalNotification.collectAsState()
 
     var elapsedSeconds by remember { mutableStateOf(0L) }
     LaunchedEffect(Unit) {
@@ -116,6 +117,47 @@ fun GuardArmedScreen(onDisarm: () -> Unit) {
                     fontSize = 14.sp, fontWeight = FontWeight.Medium,
                     color = Color(0xFFE5E7EB)
                 )
+
+                // Phase 7: Subtle OLED Digital Notification Ticker
+                digitalNotif?.let { notif ->
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFF111827))
+                            .border(1.dp, Color(0xFF1F2937), RoundedCornerShape(10.dp))
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        Column {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "💬 ${notif.appName} • ${notif.senderName}",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF60A5FA)
+                                )
+                                Text(
+                                    text = "Auto-Replied",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFF34D399)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(3.dp))
+                            Text(
+                                text = "\"${notif.autoReplyText}\"",
+                                fontSize = 11.sp,
+                                color = Color(0xFFD1D5DB),
+                                maxLines = 2
+                            )
+                        }
+                    }
+                }
             }
 
             // Center: Big Timer + Focus Status + Live Radar Status + Temporary Vibration Banner

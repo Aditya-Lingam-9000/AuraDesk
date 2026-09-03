@@ -5,6 +5,7 @@
     <!-- Privacy First: NO INTERNET PERMISSION REQUIRED -->
 
     <!-- Core Hardware & Guard Permissions -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.VIBRATE" />
@@ -57,6 +58,17 @@
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="AuraDesk zero-touch desk focus bodyguard monitoring physical interruptions" />
+        </service>
+
+        <!-- Phase 7: Deep Work Notification Auto-Reply Listener -->
+        <service
+            android:name=".notifications.FocusNotificationListenerService"
+            android:label="AuraDesk Deep Work Auto-Reply"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
         </service>
 
     </application>

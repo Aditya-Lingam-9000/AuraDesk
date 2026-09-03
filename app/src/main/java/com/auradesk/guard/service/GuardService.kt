@@ -76,6 +76,13 @@ class GuardService : LifecycleService() {
         private val _liveInterruptions = MutableStateFlow<List<com.auradesk.guard.data.InterruptionEntity>>(emptyList())
         val liveInterruptions: StateFlow<List<com.auradesk.guard.data.InterruptionEntity>> = _liveInterruptions.asStateFlow()
 
+        private val _liveDigitalNotification = MutableStateFlow<com.auradesk.guard.notifications.DigitalNotification?>(null)
+        val liveDigitalNotification: StateFlow<com.auradesk.guard.notifications.DigitalNotification?> = _liveDigitalNotification.asStateFlow()
+
+        fun postDigitalNotification(notification: com.auradesk.guard.notifications.DigitalNotification) {
+            _liveDigitalNotification.value = notification
+        }
+
         private var joviNotesSyncManagerInstance: com.auradesk.guard.notes.JoviNotesSyncManager? = null
 
         fun getJoviNotesSyncManager(context: Context): com.auradesk.guard.notes.JoviNotesSyncManager {
