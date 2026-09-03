@@ -294,6 +294,7 @@ class GuardService : LifecycleService() {
 
     // Real-time visit tracking state
     private var visitStartTime: Long = 0L
+    private var absentSinceTime: Long = 0L
     private var lastZoneVibrated: com.auradesk.guard.vision.RadarZone = com.auradesk.guard.vision.RadarZone.NONE
     private var lastVibrationTime: Long = 0L
     private var closestZoneInVisit: com.auradesk.guard.vision.RadarZone = com.auradesk.guard.vision.RadarZone.NONE
@@ -407,6 +408,7 @@ class GuardService : LifecycleService() {
             liveRadar.collect { radar ->
                 val now = System.currentTimeMillis()
                 if (radar.isPersonDetected) {
+                    absentSinceTime = 0L // Reset absence debounce timer
                     if (visitStartTime == 0L) {
                         visitStartTime = now
                         closestZoneInVisit = radar.zone
@@ -415,7 +417,7 @@ class GuardService : LifecycleService() {
 
                     if (radar.zone == com.auradesk.guard.vision.RadarZone.CLOSE_05M) {
                         closestZoneInVisit = com.auradesk.guard.vision.RadarZone.CLOSE_05M
-                        if (lastZoneVibrated != com.auradesk.guard.vision.RadarZone.CLOSE_05M || now - lastVibrationTime > 4000L) {
+                        if (lastZoneVibrated != com.auradesk.guard.vision.RadarZone.CLOSE_05M || now - lastVibrationTime > 6000L) {
                             Log.i(TAG, "🚨 Triggering Real-Time Urgent Haptic Whisper (0.5m)")
                             feedbackManager.playHapticWhisperUrgent()
                             lastZoneVibrated = com.auradesk.guard.vision.RadarZone.CLOSE_05M
@@ -436,7 +438,7 @@ class GuardService : LifecycleService() {
                         if (closestZoneInVisit != com.auradesk.guard.vision.RadarZone.CLOSE_05M) {
                             closestZoneInVisit = com.auradesk.guard.vision.RadarZone.MID_2M
                         }
-                        if (lastZoneVibrated == com.auradesk.guard.vision.RadarZone.NONE || now - lastVibrationTime > 5000L) {
+                        if (lastZoneVibrated == com.auradesk.guard.vision.RadarZone.NONE || now - lastVibrationTime > 7000L) {
                             Log.i(TAG, "🔔 Triggering Real-Time Medium Haptic Whisper (2.0m approaching)")
                             feedbackManager.playHapticWhisperMedium()
                             lastZoneVibrated = com.auradesk.guard.vision.RadarZone.MID_2M
@@ -450,38 +452,44 @@ class GuardService : LifecycleService() {
                         }
                     }
                 } else if (visitStartTime > 0L) {
-                    // Person has just walked away from desk
-                    val durationSec = kotlin.math.max(1L, (now - visitStartTime) / 1000L)
-                    Log.i(TAG, "Real-time visit ended: duration=${durationSec}s, closestZone=${closestZoneInVisit.label}")
-
-                    // Finish active recording capsule if in flight
-                    if (audioCapsuleManager.capsuleState.value.isRecording) {
-                        audioCapsuleManager.finishCapsuleCapture()
-                    } else if (durationSec >= 2L && !audioCapsuleManager.capsuleState.value.isRecording) {
-                        val distanceStr = if (closestZoneInVisit == com.auradesk.guard.vision.RadarZone.CLOSE_05M) "0.5m (At Desk)" else "2.0m (Approached)"
-                        val taskDesc = if (closestZoneInVisit == com.auradesk.guard.vision.RadarZone.CLOSE_05M) {
-                            "Visitor arrived at desk for ${durationSec}s during focus session"
-                        } else {
-                            "Subject approached desk perimeter for ${durationSec}s"
-                        }
-
-                        serviceScope.launch(Dispatchers.IO) {
-                            repository.insert(
-                                com.auradesk.guard.data.InterruptionEntity(
-                                    personName = "Desk Visitor",
-                                    taskSummary = taskDesc,
-                                    contextSnippet = "Editing main.py at line 124",
-                                    distanceZone = distanceStr,
-                                    durationSec = durationSec,
-                                    isUrgent = closestZoneInVisit == com.auradesk.guard.vision.RadarZone.CLOSE_05M
-                                )
-                            )
-                        }
+                    // Person not visible in current frame: require 3.0s continuous absence before concluding visit
+                    if (absentSinceTime == 0L) {
+                        absentSinceTime = now
                     }
+                    if (now - absentSinceTime >= 3000L) {
+                        val durationSec = kotlin.math.max(1L, (now - visitStartTime - 3000L) / 1000L)
+                        Log.i(TAG, "Real-time visit ended: duration=${durationSec}s, closestZone=${closestZoneInVisit.label}")
 
-                    visitStartTime = 0L
-                    lastZoneVibrated = com.auradesk.guard.vision.RadarZone.NONE
-                    closestZoneInVisit = com.auradesk.guard.vision.RadarZone.NONE
+                        // Finish active recording capsule if in flight
+                        if (audioCapsuleManager.capsuleState.value.isRecording) {
+                            audioCapsuleManager.finishCapsuleCapture()
+                        } else if (durationSec >= 2L && !audioCapsuleManager.capsuleState.value.isRecording) {
+                            val distanceStr = if (closestZoneInVisit == com.auradesk.guard.vision.RadarZone.CLOSE_05M) "0.5m (At Desk)" else "2.0m (Approached)"
+                            val taskDesc = if (closestZoneInVisit == com.auradesk.guard.vision.RadarZone.CLOSE_05M) {
+                                "Visitor arrived at desk for ${durationSec}s during focus session"
+                            } else {
+                                "Subject approached desk perimeter for ${durationSec}s"
+                            }
+
+                            serviceScope.launch(Dispatchers.IO) {
+                                repository.insert(
+                                    com.auradesk.guard.data.InterruptionEntity(
+                                        personName = "Desk Visitor",
+                                        taskSummary = taskDesc,
+                                        contextSnippet = "Editing main.py at line 124",
+                                        distanceZone = distanceStr,
+                                        durationSec = durationSec,
+                                        isUrgent = closestZoneInVisit == com.auradesk.guard.vision.RadarZone.CLOSE_05M
+                                    )
+                                )
+                            }
+                        }
+
+                        visitStartTime = 0L
+                        absentSinceTime = 0L
+                        lastZoneVibrated = com.auradesk.guard.vision.RadarZone.NONE
+                        closestZoneInVisit = com.auradesk.guard.vision.RadarZone.NONE
+                    }
                 }
             }
         }

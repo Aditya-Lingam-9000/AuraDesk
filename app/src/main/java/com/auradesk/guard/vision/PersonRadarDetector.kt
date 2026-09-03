@@ -18,7 +18,7 @@ class PersonRadarDetector {
 
     companion object {
         private const val TAG = "PersonRadarDetector"
-        private const val DETECTION_PERSISTENCE_MS = 500L
+        private const val DETECTION_PERSISTENCE_MS = 2500L // 2.5s persistence hold to prevent flicker
         private const val APPROACH_ON_THRESHOLD = 0.20f // Sustained +20%/s expansion turns ON approaching
         private const val APPROACH_OFF_THRESHOLD = 0.05f // <= +5%/s turns OFF approaching (Hysteresis)
     }
@@ -48,6 +48,7 @@ class PersonRadarDetector {
     private var smoothedGrowthRate: Float = 0f
     private var isApproachingLatched: Boolean = false
     private var hasInitializedFilter: Boolean = false
+    private var currentZone: RadarZone = RadarZone.NONE
 
     @OptIn(ExperimentalGetImage::class)
     fun processImageProxy(imageProxy: ImageProxy) {
@@ -93,28 +94,30 @@ class PersonRadarDetector {
         val nose = pose.getPoseLandmark(PoseLandmark.NOSE)
         val leftEye = pose.getPoseLandmark(PoseLandmark.LEFT_EYE)
         val rightEye = pose.getPoseLandmark(PoseLandmark.RIGHT_EYE)
+        val leftEar = pose.getPoseLandmark(PoseLandmark.LEFT_EAR)
+        val rightEar = pose.getPoseLandmark(PoseLandmark.RIGHT_EAR)
         val leftShoulder = pose.getPoseLandmark(PoseLandmark.LEFT_SHOULDER)
         val rightShoulder = pose.getPoseLandmark(PoseLandmark.RIGHT_SHOULDER)
-        val leftHip = pose.getPoseLandmark(PoseLandmark.LEFT_HIP)
-        val rightHip = pose.getPoseLandmark(PoseLandmark.RIGHT_HIP)
 
-        // Strict Human Living Biometric Verification:
-        // Rejects hanging clothes, jackets, and furniture by requiring REAL facial/head landmarks + shoulders
-        val hasClearHead = (nose != null && nose.inFrameLikelihood >= 0.60f) ||
-                (leftEye != null && leftEye.inFrameLikelihood >= 0.60f) ||
-                (rightEye != null && rightEye.inFrameLikelihood >= 0.60f)
+        // Robust Human Living Biometric Verification:
+        // Supports low-res 320x240 distant subjects (0.35 threshold) and head turns
+        val hasHeadOrFace = (nose != null && nose.inFrameLikelihood >= 0.35f) ||
+                (leftEye != null && leftEye.inFrameLikelihood >= 0.35f) ||
+                (rightEye != null && rightEye.inFrameLikelihood >= 0.35f) ||
+                (leftEar != null && leftEar.inFrameLikelihood >= 0.35f) ||
+                (rightEar != null && rightEar.inFrameLikelihood >= 0.35f)
 
-        val hasShoulders = (leftShoulder != null && rightShoulder != null &&
-                leftShoulder.inFrameLikelihood >= 0.50f && rightShoulder.inFrameLikelihood >= 0.50f)
+        val hasShoulders = (leftShoulder != null && leftShoulder.inFrameLikelihood >= 0.35f) ||
+                (rightShoulder != null && rightShoulder.inFrameLikelihood >= 0.35f)
 
-        val confidentLandmarks = pose.allPoseLandmarks.filter { it.inFrameLikelihood >= 0.50f }
+        val confidentLandmarks = pose.allPoseLandmarks.filter { it.inFrameLikelihood >= 0.35f }
 
-        // A genuine living human in frame MUST have a real head/face AND shoulders/torso, with >= 5 landmarks
-        val isGenuineHuman = hasClearHead && (hasShoulders || confidentLandmarks.size >= 5)
+        // Genuine living human: head + torso/shoulders, or clear shoulders with at least 4 landmarks
+        val isGenuineHuman = (hasHeadOrFace && (hasShoulders || confidentLandmarks.size >= 4)) || (hasShoulders && confidentLandmarks.size >= 4)
 
         if (!isGenuineHuman) {
             val timeSinceLastSeen = timestamp - lastValidDetectionTime
-            // Persistence Window: Hold for 500ms before declaring area clear
+            // Persistence Window: Hold last valid detection for 2.5s before declaring area clear
             if (timeSinceLastSeen >= DETECTION_PERSISTENCE_MS) {
                 if (_radarData.value.isPersonDetected) {
                     _radarData.value = PersonRadarData(
@@ -128,6 +131,7 @@ class PersonRadarDetector {
                     isApproachingLatched = false
                     smoothedGrowthRate = 0f
                     smoothedDistance = 0f
+                    currentZone = RadarZone.NONE
                 }
             }
             return
@@ -154,7 +158,7 @@ class PersonRadarDetector {
 
         var shoulderWidthNorm = 0f
         if (leftShoulder != null && rightShoulder != null &&
-            leftShoulder.inFrameLikelihood >= 0.50f && rightShoulder.inFrameLikelihood >= 0.50f
+            leftShoulder.inFrameLikelihood >= 0.35f && rightShoulder.inFrameLikelihood >= 0.35f
         ) {
             val sw = Math.abs(leftShoulder.position.x - rightShoulder.position.x)
             shoulderWidthNorm = sw / imageWidth.toFloat()
@@ -177,7 +181,7 @@ class PersonRadarDetector {
         // Calibrated Optical Inverse Geometry: D = 0.35 / span
         val rawDistance = (0.35f / spanMetric).coerceIn(0.4f, 5.0f)
 
-        // Exponential Moving Average (EMA) Filter
+        // Exponential Moving Average (EMA) Filter with smooth alpha (0.20)
         if (!hasInitializedFilter) {
             smoothedLeft = rawLeft
             smoothedTop = rawTop
@@ -186,7 +190,7 @@ class PersonRadarDetector {
             smoothedDistance = rawDistance
             hasInitializedFilter = true
         } else {
-            val alpha = 0.35f
+            val alpha = 0.20f
             smoothedLeft = alpha * rawLeft + (1f - alpha) * smoothedLeft
             smoothedTop = alpha * rawTop + (1f - alpha) * smoothedTop
             smoothedRight = alpha * rawRight + (1f - alpha) * smoothedRight
@@ -212,7 +216,7 @@ class PersonRadarDetector {
             sustainedGrowthRate = (deltaArea / baseline.second) / dtSec
         }
 
-        smoothedGrowthRate = 0.30f * sustainedGrowthRate + 0.70f * smoothedGrowthRate
+        smoothedGrowthRate = 0.25f * sustainedGrowthRate + 0.75f * smoothedGrowthRate
 
         // Hysteresis Latch on true sustained forward walking
         if (smoothedGrowthRate >= APPROACH_ON_THRESHOLD) {
@@ -221,11 +225,8 @@ class PersonRadarDetector {
             isApproachingLatched = false
         }
 
-        val zone = when {
-            smoothedDistance <= 1.1f -> RadarZone.CLOSE_05M  // Desk Interruption (< 1.1m)
-            smoothedDistance <= 2.8f -> RadarZone.MID_2M    // Approaching (1.1m - 2.8m)
-            else -> RadarZone.FAR_5M                       // Far (> 2.8m)
-        }
+        // Zone Hysteresis: Prevents flapping around boundaries
+        val zone = determineZoneWithHysteresis(smoothedDistance)
 
         _radarData.value = PersonRadarData(
             isPersonDetected = true,
@@ -243,6 +244,27 @@ class PersonRadarDetector {
             confidence = dynamicConfidence,
             lastDetectionTimestamp = timestamp
         )
+    }
+
+    private fun determineZoneWithHysteresis(distance: Float): RadarZone {
+        val zone = when (currentZone) {
+            RadarZone.CLOSE_05M -> {
+                // Stays in CLOSE until person clearly moves beyond 1.35m
+                if (distance > 1.35f) RadarZone.MID_2M else RadarZone.CLOSE_05M
+            }
+            RadarZone.MID_2M -> {
+                if (distance <= 0.95f) RadarZone.CLOSE_05M
+                else if (distance > 3.2f) RadarZone.FAR_5M
+                else RadarZone.MID_2M
+            }
+            RadarZone.FAR_5M, RadarZone.NONE -> {
+                if (distance <= 0.95f) RadarZone.CLOSE_05M
+                else if (distance <= 2.6f) RadarZone.MID_2M
+                else RadarZone.FAR_5M
+            }
+        }
+        currentZone = zone
+        return zone
     }
 
     /**
@@ -283,6 +305,7 @@ class PersonRadarDetector {
             confidence = 0.96f,
             lastDetectionTimestamp = System.currentTimeMillis()
         )
+        currentZone = zone
         Log.i(TAG, "Simulated Radar State: ${distanceMeters}m (Approaching: $isApproaching, Zone: ${zone.label})")
     }
 
@@ -293,5 +316,6 @@ class PersonRadarDetector {
         isApproachingLatched = false
         smoothedGrowthRate = 0f
         smoothedDistance = 0f
+        currentZone = RadarZone.NONE
     }
 }
