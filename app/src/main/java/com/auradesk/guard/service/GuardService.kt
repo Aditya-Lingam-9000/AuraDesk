@@ -1,15 +1,18 @@
 package com.auradesk.guard.service
 
+import android.Manifest
 import android.app.Notification
 import android.app.PendingIntent
-import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.LifecycleService
 import com.auradesk.guard.AuraDeskApp
 import com.auradesk.guard.MainActivity
 import com.auradesk.guard.R
@@ -24,7 +27,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-class GuardService : Service() {
+data class HapticAlert(
+    val title: String,
+    val detail: String,
+    val zone: com.auradesk.guard.vision.RadarZone = com.auradesk.guard.vision.RadarZone.NONE,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+class GuardService : LifecycleService() {
 
     companion object {
         private const val TAG = "GuardService"
@@ -37,6 +47,13 @@ class GuardService : Service() {
 
         private val _isArmed = MutableStateFlow(false)
         val isArmed: StateFlow<Boolean> = _isArmed.asStateFlow()
+
+        private val _latestHapticAlert = MutableStateFlow<HapticAlert?>(null)
+        val latestHapticAlert: StateFlow<HapticAlert?> = _latestHapticAlert.asStateFlow()
+
+        fun postHapticAlert(title: String, detail: String, zone: com.auradesk.guard.vision.RadarZone) {
+            _latestHapticAlert.value = HapticAlert(title, detail, zone, System.currentTimeMillis())
+        }
 
         private val _liveSensors = MutableStateFlow(FaceDownSensors())
         val liveSensors: StateFlow<FaceDownSensors> = _liveSensors.asStateFlow()
@@ -264,6 +281,7 @@ class GuardService : Service() {
     private lateinit var faceDownDetector: FaceDownDetector
     private lateinit var deepWorkDetector: com.auradesk.guard.focus.DeepWorkDetector
     private lateinit var audioCapsuleManager: com.auradesk.guard.audio.AudioCapsuleManager
+    private lateinit var cameraRadarManager: com.auradesk.guard.vision.CameraRadarManager
     private lateinit var feedbackManager: FeedbackManager
     private lateinit var repository: com.auradesk.guard.data.InterruptionRepository
     private val serviceScope = CoroutineScope(Dispatchers.Main + Job())
@@ -289,10 +307,12 @@ class GuardService : Service() {
         deepWorkDetectorInstance = deepWorkDetector
         audioCapsuleManager = com.auradesk.guard.audio.AudioCapsuleManager(this)
         audioCapsuleManagerInstance = audioCapsuleManager
+        cameraRadarManager = com.auradesk.guard.vision.CameraRadarManager(this, detector = radarDetector)
         repository = com.auradesk.guard.data.InterruptionRepository.getInstance(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        super.onStartCommand(intent, flags, startId)
         when (intent?.action) {
             ACTION_START -> {
                 startGuard()
@@ -313,7 +333,12 @@ class GuardService : Service() {
         val notification = createNotification("AuraDesk Guard Ready", "Place phone face-down to arm guard")
         
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val serviceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE or
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA or
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+                startForeground(NOTIFICATION_ID, notification, serviceType)
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val serviceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
                 startForeground(NOTIFICATION_ID, notification, serviceType)
             } else {
@@ -395,6 +420,12 @@ class GuardService : Service() {
                             feedbackManager.playHapticWhisperUrgent()
                             lastZoneVibrated = com.auradesk.guard.vision.RadarZone.CLOSE_05M
                             lastVibrationTime = now
+                            _latestHapticAlert.value = HapticAlert(
+                                title = "Urgent Desk Alert",
+                                detail = "Subject at desk • 0.5m",
+                                zone = com.auradesk.guard.vision.RadarZone.CLOSE_05M,
+                                timestamp = now
+                            )
                         }
 
                         // Autonomous 10s Capsule Trigger on 0.5m Approach
@@ -410,6 +441,12 @@ class GuardService : Service() {
                             feedbackManager.playHapticWhisperMedium()
                             lastZoneVibrated = com.auradesk.guard.vision.RadarZone.MID_2M
                             lastVibrationTime = now
+                            _latestHapticAlert.value = HapticAlert(
+                                title = "Approaching Alert",
+                                detail = "Subject approaching • 2.0m",
+                                zone = com.auradesk.guard.vision.RadarZone.MID_2M,
+                                timestamp = now
+                            )
                         }
                     }
                 } else if (visitStartTime > 0L) {
@@ -459,11 +496,15 @@ class GuardService : Service() {
                         feedbackManager.playArmFeedback()
                         deepWorkDetector.startListening()
                         audioCapsuleManager.startListening()
+                        if (ContextCompat.checkSelfPermission(this@GuardService, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                            cameraRadarManager.startCamera(this@GuardService)
+                        }
                     } else if (lastArmedState) {
                         Log.i(TAG, "Triggering Disarm Audio/Haptic Feedback")
                         feedbackManager.playDisarmFeedback()
                         deepWorkDetector.stopListening()
                         audioCapsuleManager.stopListening()
+                        cameraRadarManager.stopCamera()
                     }
                     lastArmedState = faceDown
                 }
@@ -483,6 +524,7 @@ class GuardService : Service() {
         faceDownDetector.stopListening()
         deepWorkDetector.stopListening()
         audioCapsuleManager.stopListening()
+        cameraRadarManager.stopCamera()
         deepWorkDetectorInstance = null
         audioCapsuleManagerInstance = null
         sensorCollectJob?.cancel()
@@ -520,11 +562,15 @@ class GuardService : Service() {
         notificationManager?.notify(NOTIFICATION_ID, createNotification(title, text))
     }
 
-    override fun onBind(intent: Intent?): IBinder? = null
+    override fun onBind(intent: Intent): IBinder? {
+        super.onBind(intent)
+        return null
+    }
 
     override fun onDestroy() {
         super.onDestroy()
         stopGuard()
+        cameraRadarManager.release()
         feedbackManager.release()
     }
 }

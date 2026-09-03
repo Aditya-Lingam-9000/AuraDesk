@@ -1,13 +1,20 @@
 package com.auradesk.guard.ui
 
+import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.Vibration
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.*
 import androidx.compose.ui.graphics.*
@@ -16,6 +23,7 @@ import androidx.compose.ui.text.font.*
 import androidx.compose.ui.unit.*
 import com.auradesk.guard.service.GuardService
 import com.auradesk.guard.ui.glass.*
+import com.auradesk.guard.vision.RadarZone
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.*
@@ -23,10 +31,22 @@ import java.util.*
 @Composable
 fun GuardArmedScreen(onDisarm: () -> Unit) {
     val deepWorkState by GuardService.liveDeepWork.collectAsState()
+    val radar by GuardService.liveRadar.collectAsState()
+    val latestHapticAlert by GuardService.latestHapticAlert.collectAsState()
 
     var elapsedSeconds by remember { mutableStateOf(0L) }
     LaunchedEffect(Unit) {
         while (true) { delay(1000); elapsedSeconds++ }
+    }
+
+    // Temporary vibration banner timer: shows for 3.5s then auto-disappears
+    var showHapticBanner by remember { mutableStateOf(false) }
+    LaunchedEffect(latestHapticAlert) {
+        if (latestHapticAlert != null) {
+            showHapticBanner = true
+            delay(3500)
+            showHapticBanner = false
+        }
     }
 
     val returnTime = remember {
@@ -57,7 +77,7 @@ fun GuardArmedScreen(onDisarm: () -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFF000000))
-            .padding(32.dp)
+            .padding(28.dp)
     ) {
         // Ambient glow canvas
         Canvas(modifier = Modifier.fillMaxSize()) {
@@ -78,59 +98,169 @@ fun GuardArmedScreen(onDisarm: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
+            // Header Top
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(top = 24.dp)
+                modifier = Modifier.padding(top = 16.dp)
             ) {
-                androidx.compose.material3.Text(
+                Text(
                     text = "AURADESK",
                     fontSize = 11.sp, fontWeight = FontWeight.Bold,
                     color = Color(0xFF6B7280), letterSpacing = 3.sp
                 )
                 Spacer(modifier = Modifier.height(4.dp))
-                androidx.compose.material3.Text(
+                Text(
                     text = if (deepWorkState.isDeepWork) "Deep Work Protected" else "Focus Sanctuary Active",
                     fontSize = 14.sp, fontWeight = FontWeight.Medium,
                     color = Color(0xFFE5E7EB)
                 )
             }
 
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                androidx.compose.material3.Text(
+            // Center: Big Timer + Focus Status + Live Radar Status + Temporary Vibration Banner
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
                     text = formattedTime,
                     fontSize = 64.sp, fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
                     color = Color(0xFFFFFFFF), letterSpacing = (-1).sp
                 )
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    androidx.compose.material3.Text("Till $returnTime", fontSize = 13.sp, color = Color(0xFF9CA3AF))
-                    androidx.compose.material3.Text("•", fontSize = 13.sp, color = Color(0xFF4B5563))
-                    androidx.compose.material3.Text(
+                    Text("Till $returnTime", fontSize = 13.sp, color = Color(0xFF9CA3AF))
+                    Text("•", fontSize = 13.sp, color = Color(0xFF4B5563))
+                    Text(
                         "Focus ${deepWorkState.focusScore}%",
                         fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF10B981)
                     )
                 }
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                // Live Perimeter Vision Radar Status Pill
+                val (zoneText, zoneColor, zoneBg) = when (radar.zone) {
+                    RadarZone.CLOSE_05M -> Triple(
+                        "At Desk • ${String.format("%.1f", radar.distanceMeters)}m",
+                        Color(0xFFEF4444),
+                        Color(0x33EF4444)
+                    )
+                    RadarZone.MID_2M -> Triple(
+                        "Approaching • ${String.format("%.1f", radar.distanceMeters)}m",
+                        Color(0xFFFBBF24),
+                        Color(0x33FBBF24)
+                    )
+                    RadarZone.FAR_5M -> Triple(
+                        "Far Perimeter • ${String.format("%.1f", radar.distanceMeters)}m",
+                        Color(0xFF38BDF8),
+                        Color(0x3338BDF8)
+                    )
+                    RadarZone.NONE -> Triple(
+                        "Perimeter Clear • Radar Active",
+                        Color(0xFF94A3B8),
+                        Color(0x1A94A3B8)
+                    )
+                }
+
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(zoneBg)
+                        .border(1.dp, zoneColor.copy(alpha = 0.45f), RoundedCornerShape(20.dp))
+                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(zoneColor)
+                    )
+                    Text(
+                        text = zoneText,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = zoneColor,
+                        letterSpacing = 0.4.sp
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                // Temporary Vibration Alert Tag (Appears only on haptic trigger, auto-vanishes after 3.5s)
+                AnimatedVisibility(
+                    visible = showHapticBanner && latestHapticAlert != null,
+                    enter = fadeIn(tween(250)) + slideInVertically(initialOffsetY = { 30 }),
+                    exit = fadeOut(tween(300)) + slideOutVertically(targetOffsetY = { 30 })
+                ) {
+                    latestHapticAlert?.let { alert ->
+                        val alertColor = when (alert.zone) {
+                            RadarZone.CLOSE_05M -> Color(0xFFEF4444)
+                            RadarZone.MID_2M -> Color(0xFFFBBF24)
+                            else -> Color(0xFF38BDF8)
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0xFF141417))
+                                .border(1.5.dp, alertColor.copy(alpha = 0.85f), RoundedCornerShape(12.dp))
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(alertColor.copy(alpha = 0.2f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Vibration,
+                                    contentDescription = null,
+                                    tint = alertColor,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = alert.title,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = alertColor
+                                )
+                                Text(
+                                    text = alert.detail,
+                                    fontSize = 11.sp,
+                                    color = Color(0xFFCBD5E1)
+                                )
+                            }
+                        }
+                    }
+                }
             }
 
-            // Glass disarm button (on pure black background)
+            // Bottom: Glass Disarm Button
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 16.dp)
+                    .padding(bottom = 12.dp)
                     .height(48.dp)
                     .drawBehind {
                         val cornerPx = 10.dp.toPx()
                         val rrect = RoundRect(Rect(Offset.Zero, size), CornerRadius(cornerPx))
-                        val path  = Path().apply { addRoundRect(rrect) }
+                        val path = Path().apply { addRoundRect(rrect) }
                         drawPath(path, color = Color(0xFF18181B))
                         drawLine(
                             color = Color(0x55FFFFFF),
                             start = Offset(cornerPx, 1.5f),
-                            end   = Offset(size.width - cornerPx, 1.5f),
+                            end = Offset(size.width - cornerPx, 1.5f),
                             strokeWidth = 1f, cap = StrokeCap.Round
                         )
                         clipPath(path) { drawGlassShimmer(shimmerOffset, alpha = 0.15f) }
@@ -143,13 +273,13 @@ fun GuardArmedScreen(onDisarm: () -> Unit) {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    androidx.compose.material3.Icon(
+                    Icon(
                         imageVector = Icons.Default.LockOpen,
                         contentDescription = null,
                         tint = Color(0xFFE5E7EB),
                         modifier = Modifier.size(16.dp)
                     )
-                    androidx.compose.material3.Text(
+                    Text(
                         "Disarm Focus Guard",
                         color = Color(0xFFE5E7EB),
                         fontSize = 14.sp,

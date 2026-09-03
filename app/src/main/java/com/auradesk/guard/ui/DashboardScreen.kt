@@ -459,9 +459,18 @@ fun HapticFeedbackCard(context: Context) {
             Spacer(modifier = Modifier.height(14.dp))
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                GlassButton("Low (80ms)", onClick = { feedbackManager.playHapticWhisperLow() }, modifier = Modifier.weight(1f))
-                GlassButton("Mid (2m)", onClick = { feedbackManager.playHapticWhisperMedium() }, modifier = Modifier.weight(1f))
-                GlassButton("Urgent (0.5m)", onClick = { feedbackManager.playHapticWhisperUrgent() },
+                GlassButton("Low (80ms)", onClick = {
+                    feedbackManager.playHapticWhisperLow()
+                    GuardService.postHapticAlert("Low Priority Ping", "Double 80ms Subtle Pulse", com.auradesk.guard.vision.RadarZone.FAR_5M)
+                }, modifier = Modifier.weight(1f))
+                GlassButton("Mid (2m)", onClick = {
+                    feedbackManager.playHapticWhisperMedium()
+                    GuardService.postHapticAlert("Approaching Alert", "Subject at 2.0m • Mid Pulse", com.auradesk.guard.vision.RadarZone.MID_2M)
+                }, modifier = Modifier.weight(1f))
+                GlassButton("Urgent (0.5m)", onClick = {
+                    feedbackManager.playHapticWhisperUrgent()
+                    GuardService.postHapticAlert("Urgent Desk Alert", "Subject at desk • 0.5m Triple Buzz", com.auradesk.guard.vision.RadarZone.CLOSE_05M)
+                },
                     modifier = Modifier.weight(1f),
                     tintColor = GlassColors.GlassRed, textColor = GlassColors.AccentRed)
             }
