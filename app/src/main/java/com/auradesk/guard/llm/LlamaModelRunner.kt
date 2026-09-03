@@ -1,6 +1,7 @@
 package com.auradesk.guard.llm
 
 import android.content.Context
+import android.os.Build
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -16,6 +17,8 @@ import java.io.File
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -60,20 +63,79 @@ class LlamaModelRunner private constructor(private val context: Context) {
         checkModelStatus()
     }
 
-    fun getModelFile(): File {
-        // Preferred: External files directory for large models (~350MB)
-        val extDir = context.getExternalFilesDir("models") ?: context.filesDir
-        val extFile = File(extDir, MODEL_FILENAME)
-        if (extFile.exists() && extFile.length() > 50_000_000L) return extFile
+    private fun promoteTempFile(tempFile: File, targetFile: File): Boolean {
+        return try {
+            if (targetFile.exists()) {
+                targetFile.delete()
+            }
+            if (tempFile.renameTo(targetFile)) {
+                Log.i(TAG, "Successfully renamed temp model file to target: ${targetFile.absolutePath}")
+                true
+            } else {
+                Log.w(TAG, "renameTo returned false, attempting NIO copy/move...")
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    Files.move(tempFile.toPath(), targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                    true
+                } else {
+                    tempFile.copyTo(targetFile, overwrite = true)
+                    tempFile.delete()
+                    true
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Promote temp file error: ${e.message}")
+            false
+        }
+    }
 
-        // Internal files directory fallback
+    fun getModelFile(): File {
+        val extDir = context.getExternalFilesDir("models") ?: context.filesDir
         val intDir = File(context.filesDir, "models")
-        return File(intDir, MODEL_FILENAME)
+
+        // 1. Check if finalized target model already exists (>100MB)
+        val extTarget = File(extDir, MODEL_FILENAME)
+        if (extTarget.exists() && extTarget.length() > 100_000_000L) return extTarget
+
+        val intTarget = File(intDir, MODEL_FILENAME)
+        if (intTarget.exists() && intTarget.length() > 100_000_000L) return intTarget
+
+        // 2. Check if a temporary file exists (>100MB) from previous download attempt
+        val extTemp = File(extDir, "$MODEL_FILENAME.tmp")
+        if (extTemp.exists() && extTemp.length() > 100_000_000L) {
+            Log.i(TAG, "Found existing downloaded temp file (${extTemp.length() / (1024 * 1024)}MB). Promoting to target...")
+            if (promoteTempFile(extTemp, extTarget) && extTarget.exists()) {
+                return extTarget
+            }
+            // Even if rename failed, the tempFile has the complete model and can be loaded directly!
+            return extTemp
+        }
+
+        val intTemp = File(intDir, "$MODEL_FILENAME.tmp")
+        if (intTemp.exists() && intTemp.length() > 100_000_000L) {
+            Log.i(TAG, "Found existing internal temp file (${intTemp.length() / (1024 * 1024)}MB). Promoting to target...")
+            if (promoteTempFile(intTemp, intTarget) && intTarget.exists()) {
+                return intTarget
+            }
+            return intTemp
+        }
+
+        return extTarget
     }
 
     fun checkModelStatus() {
-        val file = getModelFile()
-        if (file.exists() && file.length() > 100_000_000L) {
+        val extDir = context.getExternalFilesDir("models") ?: context.filesDir
+        val intDir = File(context.filesDir, "models")
+
+        val candidates = listOf(
+            File(extDir, MODEL_FILENAME),
+            File(extDir, "$MODEL_FILENAME.tmp"),
+            File(intDir, MODEL_FILENAME),
+            File(intDir, "$MODEL_FILENAME.tmp")
+        )
+        val readyCandidate = candidates.firstOrNull { it.exists() && it.length() > 100_000_000L }
+
+        if (readyCandidate != null) {
+            Log.i(TAG, "🎯 Found valid model file on device: ${readyCandidate.absolutePath} (${readyCandidate.length() / (1024 * 1024)}MB)")
             if (llamaModel != null && llamaModel?.isLoaded == true) {
                 _llamaState.value = LlamaState.Ready
             } else {
@@ -116,6 +178,17 @@ class LlamaModelRunner private constructor(private val context: Context) {
     fun downloadModel(onComplete: (Boolean) -> Unit = {}) {
         if (_llamaState.value is LlamaState.Downloading) return
 
+        // If a valid model or temp file already exists, don't re-download!
+        val existing = getModelFile()
+        if (existing.exists() && existing.length() > 100_000_000L) {
+            Log.i(TAG, "Model file already exists on disk (${existing.length() / (1024 * 1024)}MB). Loading directly...")
+            scope.launch {
+                val success = loadModel()
+                onComplete(success)
+            }
+            return
+        }
+
         scope.launch {
             val targetDir = context.getExternalFilesDir("models") ?: File(context.filesDir, "models")
             if (!targetDir.exists()) targetDir.mkdirs()
@@ -156,12 +229,16 @@ class LlamaModelRunner private constructor(private val context: Context) {
                 inputStream.close()
                 connection.disconnect()
 
-                if (tempFile.renameTo(targetFile)) {
-                    Log.i(TAG, "✅ Model download complete: ${targetFile.absolutePath}")
+                // Promote temp file or load directly from tempFile
+                promoteTempFile(tempFile, targetFile)
+                val fileToLoad = if (targetFile.exists() && targetFile.length() > 100_000_000L) targetFile else tempFile
+
+                if (fileToLoad.exists() && fileToLoad.length() > 100_000_000L) {
+                    Log.i(TAG, "✅ Model download ready at: ${fileToLoad.absolutePath}")
                     loadModel()
                     onComplete(true)
                 } else {
-                    _llamaState.value = LlamaState.Error("Failed to rename temporary model file")
+                    _llamaState.value = LlamaState.Error("Downloaded file incomplete")
                     onComplete(false)
                 }
             } catch (e: Exception) {
