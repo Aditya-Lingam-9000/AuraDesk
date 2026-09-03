@@ -145,8 +145,9 @@ class DeepWorkDetector(private val context: Context) {
 
             val audioBuffer = ShortArray(BUFFER_SIZE_SAMPLES)
 
-            while (isListening && currentCoroutineContext().isActive) {
-                val readCount = audioRecord?.read(audioBuffer, 0, BUFFER_SIZE_SAMPLES) ?: 0
+            while (isListening && currentCoroutineContext().isActive && audioRecord != null) {
+                val record = audioRecord ?: break
+                val readCount = record.read(audioBuffer, 0, BUFFER_SIZE_SAMPLES)
                 if (readCount > 0) {
                     processAudioChunk(audioBuffer, readCount)
                 }
