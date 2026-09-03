@@ -6,6 +6,7 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Build
+import android.os.PowerManager
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -23,13 +24,19 @@ class FaceDownDetector(context: Context) : SensorEventListener {
     companion object {
         private const val TAG = "FaceDownDetector"
         private const val STABILITY_REQUIRED_MS = 1000L // 1.0 second sustained stability
-        private const val MAX_LIGHT_LUX = 2.0f // Only dark table (0-1 lux), strictly rejects any room light
+        // When screen is OFF, only dark table (< 5 lux) is accepted
+        private const val MAX_LIGHT_SCREEN_OFF_LUX = 5.0f
+        // When screen is ON, OLED internal refraction and desk reflection cause under-display
+        // sensors to read 15-35 lux at 50-100% brightness. 45 lux allows arming at any brightness
+        // while firmly rejecting room ambient light (> 60-500 lux).
+        private const val MAX_LIGHT_SCREEN_ON_LUX = 45.0f
         private const val MAX_PROXIMITY_CM = 1.5f
         private const val MIN_Z_DOWNWARD = -7.5f // Facing down: z is negative on Android
         private const val MAX_GYRO_STABLE_RAD_S = 0.25f
     }
 
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+    private val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
 
     // Support wake-up sensor on modern Android devices (Vivo / Snapdragon)
     private val proximitySensor: Sensor? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
@@ -149,11 +156,27 @@ class FaceDownDetector(context: Context) : SensorEventListener {
 
     private fun evaluateFaceDownState() {
         val maxProx = proximitySensor?.maximumRange ?: 5f
-        val isLightDark = currentLight <= MAX_LIGHT_LUX // <= 2.0 lux
+        val isScreenOn = powerManager?.isInteractive ?: true
         // Face down means phone is resting on its screen: gravity pulls downwards, so Z acceleration is negative
         val isZDownward = currentAccelZ <= MIN_Z_DOWNWARD && Math.abs(currentAccelX) < 4.5f && Math.abs(currentAccelY) < 4.5f
         // Gyro is stable if magnitude is low (or if gyro not available, assume stable if not moving violently)
         val isGyroStable = gyroSensor == null || currentGyroMagnitude <= MAX_GYRO_STABLE_RAD_S
+
+        // Adaptive Lux Threshold:
+        // On modern OLED displays (especially under-display light sensors like Vivo AMOLED),
+        // screen pixels bleed light into the sensor when resting face-down on a desk.
+        // If screen is on at higher brightness, reflection can reach 15-35 lux.
+        // When downward on a desk, room light cannot enter, so allowing up to 45 lux solves the issue completely.
+        val maxAllowedLux = if (!isScreenOn) {
+            MAX_LIGHT_SCREEN_OFF_LUX
+        } else if (isZDownward) {
+            MAX_LIGHT_SCREEN_ON_LUX
+        } else {
+            // Screen is on, but not yet fully face-down: allow up to 25 lux
+            25.0f
+        }
+
+        val isLightDark = currentLight <= maxAllowedLux
 
         // Seamless Multi-Session Re-Arming:
         // Proximity is Near if hardware sensor reports near, OR if optical occlusion (dark desk + Z downward)
@@ -161,15 +184,20 @@ class FaceDownDetector(context: Context) : SensorEventListener {
         val isOpticalOccluded = isLightDark && isZDownward
         val isProxNear = isHardwareProxNear || isOpticalOccluded
         val displayProx = if (isProxNear) 0.0f else (if (hasReceivedProximityEvent) currentProximity else 5.0f)
-        val proxTypeLabel = if (isHardwareProxNear) "Hardware (${proximitySensor?.name?.take(12) ?: "Sensor"})" else "Optical Fused (0 lux)"
+        val proxTypeLabel = if (isHardwareProxNear) "Hardware (${proximitySensor?.name?.take(12) ?: "Sensor"})" else "Optical Fused (${currentLight.toInt()} lux)"
 
         val instantaneousArmCondition = isProxNear && isLightDark && isZDownward && isGyroStable
         val now = System.currentTimeMillis()
         var stabilityTime = 0L
 
         if (_isFaceDown.value) {
-            // Once Armed: Hold state as long as phone is face-down on table (Z <= -5.5 m/s² and Light <= 4.0 lux)
-            val isStillFaceDown = currentAccelZ <= -5.5f && currentLight <= 4.0f
+            // Once Armed: Hold state as long as phone is face-down on table.
+            // Stays armed as long as Z remains downward (Z <= -5.5 m/s² and not tilted),
+            // and light doesn't suddenly jump to exposed room ambient light (> 75 lux).
+            val isStillZDownward = currentAccelZ <= -5.5f && Math.abs(currentAccelX) < 5.0f && Math.abs(currentAccelY) < 5.0f
+            val maxDisarmLux = if (isScreenOn) 75.0f else 15.0f
+            val isStillFaceDown = isStillZDownward && currentLight <= maxDisarmLux
+
             if (!isStillFaceDown) {
                 if (armedStartTime > 0L) {
                     lastArmedDurationSec = (now - armedStartTime) / 1000L
@@ -186,11 +214,11 @@ class FaceDownDetector(context: Context) : SensorEventListener {
                     conditionSatisfiedSince = now
                 }
                 stabilityTime = now - conditionSatisfiedSince
-                if (stabilityTime >= 1000L) {
+                if (stabilityTime >= STABILITY_REQUIRED_MS) {
                     _isFaceDown.value = true
                     armedStartTime = now
                     totalArmSessions++
-                    Log.i(TAG, ">>> Guard Armed: Phone is Face-Down on desk (Session #$totalArmSessions, stable for ${stabilityTime}ms) <<<")
+                    Log.i(TAG, ">>> Guard Armed: Phone is Face-Down on desk (Session #$totalArmSessions, stable for ${stabilityTime}ms, lux=$currentLight) <<<")
                 }
             } else {
                 conditionSatisfiedSince = 0L
