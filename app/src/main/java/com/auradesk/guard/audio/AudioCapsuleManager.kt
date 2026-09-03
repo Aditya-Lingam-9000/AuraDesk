@@ -69,22 +69,28 @@ class AudioCapsuleManager(private val context: Context) {
 
     init {
         initVoskModel()
-        initNativeSpeechRecognizer()
+        ensureNativeSpeechRecognizer()
     }
 
-    private fun initNativeSpeechRecognizer() {
+    private fun ensureNativeSpeechRecognizer() {
         mainHandler.post {
             try {
-                if (SpeechRecognizer.isRecognitionAvailable(context)) {
-                    nativeSpeechRecognizer = SpeechRecognizer.createSpeechRecognizer(context).apply {
+                if (nativeSpeechRecognizer == null && SpeechRecognizer.isRecognitionAvailable(context)) {
+                    val recognizer = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+                        SpeechRecognizer.isOnDeviceRecognitionAvailable(context)) {
+                        Log.i(TAG, "Pre-warming On-Device SpeechRecognizer")
+                        SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
+                    } else {
+                        Log.i(TAG, "Pre-warming Standard SpeechRecognizer")
+                        SpeechRecognizer.createSpeechRecognizer(context)
+                    }
+                    nativeSpeechRecognizer = recognizer.apply {
                         setRecognitionListener(createRecognitionListener())
                     }
-                    Log.i(TAG, "✅ On-Device Speech Recognizer initialized successfully")
-                } else {
-                    Log.w(TAG, "Speech recognition not available on device")
+                    Log.i(TAG, "✅ Native SpeechRecognizer pre-warmed and ready")
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error initializing native SpeechRecognizer", e)
+                Log.e(TAG, "Error pre-warming native SpeechRecognizer", e)
             }
         }
     }
@@ -92,8 +98,14 @@ class AudioCapsuleManager(private val context: Context) {
     private fun createRecognitionListener(): RecognitionListener {
         return object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {
-                Log.i(TAG, "🎤 SpeechRecognizer ready for speech")
-                _capsuleState.value = _capsuleState.value.copy(isVoiceDetected = true)
+                Log.i(TAG, "🎤 SpeechRecognizer ready for speech (Chime played!)")
+                _capsuleState.value = _capsuleState.value.copy(
+                    isVoiceDetected = true,
+                    livePartialTranscript = "Listening... Speak into mic now",
+                    capsuleStatus = "RECORDING_CAPSULE"
+                )
+                // Start countdown ONLY when microphone is ready and chime has played
+                startCountdownTimer()
             }
 
             override fun onBeginningOfSpeech() {
@@ -118,18 +130,26 @@ class AudioCapsuleManager(private val context: Context) {
 
             override fun onError(error: Int) {
                 Log.w(TAG, "SpeechRecognizer error code: $error")
-                // Restart listening if still in active capsule window
                 if (isRecordingCapsule) {
-                    mainHandler.postDelayed({
-                        if (isRecordingCapsule) {
-                            try {
-                                nativeSpeechRecognizer?.cancel()
-                                startNativeRecognizerListening()
-                            } catch (e: Exception) {
-                                Log.e(TAG, "Error recovering recognizer", e)
+                    if (error == SpeechRecognizer.ERROR_CLIENT || error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) {
+                        mainHandler.postDelayed({
+                            if (isRecordingCapsule) {
+                                recreateSpeechRecognizerAndListen()
                             }
-                        }
-                    }, 400)
+                        }, 200)
+                    } else if (error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT || error == SpeechRecognizer.ERROR_NO_MATCH) {
+                        // User was silent for a few moments: resume listening smoothly without destroying service
+                        mainHandler.postDelayed({
+                            if (isRecordingCapsule) {
+                                try {
+                                    val intent = createRecognizerIntent()
+                                    nativeSpeechRecognizer?.startListening(intent)
+                                } catch (e: Exception) {
+                                    recreateSpeechRecognizerAndListen()
+                                }
+                            }
+                        }, 100)
+                    }
                 }
             }
 
@@ -167,42 +187,45 @@ class AudioCapsuleManager(private val context: Context) {
         }
     }
 
+    private fun createRecognizerIntent(): Intent {
+        return Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 10000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 10000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 2000L)
+        }
+    }
+
     private fun startNativeRecognizerListening() {
         mainHandler.post {
             try {
-                // Always destroy stale instances to guarantee fresh mic session
+                ensureNativeSpeechRecognizer()
+                nativeSpeechRecognizer?.cancel()
+                val intent = createRecognizerIntent()
+                nativeSpeechRecognizer?.startListening(intent)
+                Log.i(TAG, "Instant startListening called on warm SpeechRecognizer")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to start listening on recognizer, recreating...", e)
+                recreateSpeechRecognizerAndListen()
+            }
+        }
+    }
+
+    private fun recreateSpeechRecognizerAndListen() {
+        mainHandler.post {
+            try {
                 try {
-                    nativeSpeechRecognizer?.stopListening()
                     nativeSpeechRecognizer?.cancel()
                     nativeSpeechRecognizer?.destroy()
                 } catch (_: Exception) {}
                 nativeSpeechRecognizer = null
-
-                val recognizer = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
-                    SpeechRecognizer.isOnDeviceRecognitionAvailable(context)) {
-                    Log.i(TAG, "Creating Fresh On-Device SpeechRecognizer")
-                    SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
-                } else {
-                    Log.i(TAG, "Creating Fresh Standard SpeechRecognizer")
-                    SpeechRecognizer.createSpeechRecognizer(context)
-                }
-                nativeSpeechRecognizer = recognizer.apply {
-                    setRecognitionListener(createRecognitionListener())
-                }
-
-                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                    putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-                    putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
-                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 4000L)
-                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 3000L)
-                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1500L)
-                }
-
+                ensureNativeSpeechRecognizer()
+                val intent = createRecognizerIntent()
                 nativeSpeechRecognizer?.startListening(intent)
-                Log.i(TAG, "Started Fresh SpeechRecognizer listening...")
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to start fresh SpeechRecognizer", e)
+                Log.e(TAG, "Failed to recreate SpeechRecognizer", e)
             }
         }
     }
@@ -212,11 +235,22 @@ class AudioCapsuleManager(private val context: Context) {
             try {
                 nativeSpeechRecognizer?.stopListening()
                 nativeSpeechRecognizer?.cancel()
-                nativeSpeechRecognizer?.destroy()
-                nativeSpeechRecognizer = null
-                Log.i(TAG, "Cleanly destroyed native SpeechRecognizer for next session")
             } catch (e: Exception) {
                 Log.e(TAG, "Error stopping native SpeechRecognizer", e)
+            }
+        }
+    }
+
+    private fun destroyNativeRecognizer() {
+        mainHandler.post {
+            try {
+                nativeSpeechRecognizer?.stopListening()
+                nativeSpeechRecognizer?.cancel()
+                nativeSpeechRecognizer?.destroy()
+                nativeSpeechRecognizer = null
+                Log.i(TAG, "Cleanly destroyed native SpeechRecognizer")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error destroying native SpeechRecognizer", e)
                 nativeSpeechRecognizer = null
             }
         }
@@ -270,14 +304,11 @@ class AudioCapsuleManager(private val context: Context) {
         }
 
         isListening = true
-        Log.i(TAG, "Starting AudioCapsuleManager listening loop...")
-
+        Log.i(TAG, "Starting AudioCapsuleManager (pre-warming SpeechRecognizer)...")
         _capsuleState.value = _capsuleState.value.copy(capsuleStatus = "ARMED_LISTENING")
 
-        recordingJob?.cancel()
-        recordingJob = scope.launch(Dispatchers.IO) {
-            runAudioLoop()
-        }
+        // Pre-warm SpeechRecognizer service while armed!
+        ensureNativeSpeechRecognizer()
     }
 
     fun stopListening() {
@@ -286,7 +317,8 @@ class AudioCapsuleManager(private val context: Context) {
         isRecordingCapsule = false
         recordingJob?.cancel()
         timerJob?.cancel()
-        stopNativeRecognizerListening()
+        timerJob = null
+        destroyNativeRecognizer()
 
         try {
             audioRecord?.stop()
@@ -302,7 +334,7 @@ class AudioCapsuleManager(private val context: Context) {
             capsuleStatus = "IDLE",
             isVoiceDetected = false
         )
-        Log.i(TAG, "Stopped AudioCapsuleManager")
+        Log.i(TAG, "Stopped AudioCapsuleManager and released SpeechRecognizer")
     }
 
     /**
@@ -311,31 +343,35 @@ class AudioCapsuleManager(private val context: Context) {
     fun start10SecCapsuleCapture(triggerReason: String = "Radar 0.5m Proximity") {
         if (isRecordingCapsule) return
 
-        // Release raw AudioRecord so SpeechRecognizer has exclusive microphone access
-        try {
-            audioRecord?.stop()
-            audioRecord?.release()
-            audioRecord = null
-        } catch (e: Exception) {
-            Log.w(TAG, "AudioRecord pause note: ${e.message}")
-        }
-
         isRecordingCapsule = true
+        timerJob?.cancel()
+        timerJob = null
         capsuleStartTime = System.currentTimeMillis()
         Log.i(TAG, "🎙️ Started 10-Second Audio Capsule Capture (Trigger: $triggerReason)")
-
-        // Start On-Device Speech Recognition stream
-        startNativeRecognizerListening()
 
         _capsuleState.value = _capsuleState.value.copy(
             isRecording = true,
             remainingSeconds = MAX_CAPSULE_DURATION_SEC,
             elapsedSeconds = 0,
-            livePartialTranscript = "Listening... Speak into mic now",
-            capsuleStatus = "RECORDING_CAPSULE"
+            livePartialTranscript = "Connecting microphone...",
+            capsuleStatus = "STARTING_RECOGNIZER"
         )
 
-        timerJob?.cancel()
+        // Start On-Device Speech Recognition stream (instant on pre-warmed instance)
+        startNativeRecognizerListening()
+
+        // Watchdog fallback: if onReadyForSpeech doesn't fire within 1500ms, start countdown anyway
+        mainHandler.postDelayed({
+            if (isRecordingCapsule && timerJob == null) {
+                Log.i(TAG, "Watchdog starting countdown timer")
+                startCountdownTimer()
+            }
+        }, 1500L)
+    }
+
+    private fun startCountdownTimer() {
+        if (timerJob != null) return
+        capsuleStartTime = System.currentTimeMillis()
         timerJob = scope.launch {
             for (sec in 1..MAX_CAPSULE_DURATION_SEC) {
                 delay(1000)
@@ -360,6 +396,7 @@ class AudioCapsuleManager(private val context: Context) {
         if (!isRecordingCapsule) return
         isRecordingCapsule = false
         timerJob?.cancel()
+        timerJob = null
         stopNativeRecognizerListening()
 
         val elapsedSec = max(1L, (System.currentTimeMillis() - capsuleStartTime) / 1000L)
