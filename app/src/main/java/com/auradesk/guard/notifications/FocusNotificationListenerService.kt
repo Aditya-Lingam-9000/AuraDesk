@@ -141,7 +141,7 @@ class FocusNotificationListenerService : NotificationListenerService() {
         }
 
         val prefs = getSharedPreferences("auradesk_prefs", Context.MODE_PRIVATE)
-        val userName = prefs.getString("user_name", "Arjun") ?: "Arjun"
+        val userName = prefs.getString("user_name", "")?.trim() ?: ""
 
         val llamaRunner = LlamaModelRunner.getInstance(this)
         val returnTime = llamaRunner.calculateReturnTime(focusDurationMinutes = 45)

@@ -257,39 +257,44 @@ class LlamaModelRunner private constructor(private val context: Context) {
         senderName: String,
         messageText: String,
         returnTime: String,
-        userName: String = "Arjun"
+        userName: String = ""
     ): String = withContext(Dispatchers.IO) {
+        val displayName = if (userName.isNotBlank()) userName.trim() else "the user"
+
         val model = llamaModel
         if (model != null && model.isLoaded) {
             try {
                 val prompt = buildString {
                     append("<|im_start|>system\n")
-                    append("You are AuraDesk, an elite executive focus assistant for $userName.\n")
-                    append("$userName is currently locked in a deep work session and will return at $returnTime.\n\n")
+                    append("You are AuraDesk, an executive AI focus assistant for $displayName.\n")
+                    append("$displayName is currently locked in a deep work focus session and will return at $returnTime.\n\n")
                     append("TASK:\n")
                     append("Generate a single, natural, highly relevant auto-reply to the incoming message.\n\n")
                     append("STRICT RULES:\n")
-                    append("1. RELEVANCE: Directly reference the specific subject, action, or question in the message (e.g. PR review, bug, meeting, report, greeting, lunch). Never send a generic template.\n")
-                    append("2. RETURN TIME: Explicitly state $userName will reply right after $returnTime.\n")
-                    append("3. URGENCY: Offer that if it is an urgent blocker, they can call twice to reach $userName.\n")
-                    append("4. TONE & LANGUAGE: Mirror the sender's exact language, style, and vocabulary (e.g. professional English, casual English, or Hinglish like 'bhai/yaar/hote hi').\n")
-                    append("5. LENGTH: 1 to 2 short sentences (maximum 28 words).\n")
-                    append("6. OUTPUT FORMAT: Output ONLY the reply text. Do NOT include quotes, prefixes (like 'Reply:' or 'Assistant:'), or any preamble.\n\n")
+                    append("1. PREFIX: The output MUST start with 'Auto-Reply: ' followed by the message.\n")
+                    append("2. RELEVANCE: Directly reference the specific topic, action, or question in the message (e.g. PR review, bug, meeting, report, greeting, lunch). Never send a generic template.\n")
+                    append("3. RETURN TIME: Explicitly state $displayName will reply right after $returnTime.\n")
+                    append("4. URGENCY: Offer that if it is an urgent blocker, they can call twice.\n")
+                    append("5. IDENTITY: Refer to the focused person as '$displayName'.\n")
+                    append("6. TONE & LANGUAGE: Mirror the sender's exact language, style, and vocabulary (e.g. professional English, casual English, or Hinglish like 'bhai/yaar/hote hi').\n")
+                    append("7. LENGTH: 1 to 2 short sentences (maximum 28 words).\n")
+                    append("8. OUTPUT FORMAT: Output ONLY 'Auto-Reply: <text>'. Do NOT include quotes, conversational filler, or preamble.\n\n")
                     append("FEW-SHOT EXAMPLES:\n\n")
-                    append("User: Message from Priya: Hey Arjun, can you review the payment auth PR before deployment?\n")
-                    append("Assistant: Hey Priya! Arjun is in deep work till $returnTime. He will review your payment auth PR right after. Please call twice if it is an urgent blocker.\n\n")
-                    append("User: Message from Rohit: Bhai sham ko chai pine chalte hain kya?\n")
-                    append("Assistant: Rohit bhai, abhi focus session chal raha hai $returnTime tak. Khatam hote hi ping karta hoon chai ke liye!\n\n")
-                    append("User: Message from Vikram (VP): Need the Q3 infrastructure budget sheet ASAP.\n")
-                    append("Assistant: Hi Vikram, Arjun is focused in a deep work block until $returnTime. He will send the Q3 infrastructure budget sheet immediately after. If critical, please call.\n\n")
-                    append("User: Message from Alex: Good morning! Let me know when you get a chance to test the new build.\n")
-                    append("Assistant: Good morning Alex! Arjun is in focus till $returnTime. He will test the new build and catch up with you right after.<|im_end|>\n")
+                    append("User: Message from Contact: Can you review the payment auth PR before deployment?\n")
+                    append("Assistant: Auto-Reply: $displayName is in deep work till $returnTime and will review your payment auth PR right after. Please call twice if urgent.\n\n")
+                    append("User: Message from Contact: Bhai sham ko chai pine chalte hain kya?\n")
+                    append("Assistant: Auto-Reply: Abhi focus session chal raha hai $returnTime tak. Free hote hi ping karta hoon chai ke liye!\n\n")
+                    append("User: Message from Contact: Need the Q3 infrastructure budget sheet ASAP.\n")
+                    append("Assistant: Auto-Reply: $displayName is in a focus block until $returnTime. The Q3 infrastructure budget sheet will be sent immediately after. Please call if critical.\n\n")
+                    append("User: Message from Contact: Good morning! Let me know when you get a chance to test the new build.\n")
+                    append("Assistant: Auto-Reply: Good morning! $displayName is in focus till $returnTime and will test the new build right after.<|im_end|>\n")
                     append("<|im_start|>user\n")
                     append("Message from $senderName: $messageText<|im_end|>\n")
                     append("<|im_start|>assistant\n")
+                    append("Auto-Reply: ")
                 }
 
-                Log.i(TAG, "🦙 Generating on-device auto-reply for $senderName with Qwen2-0.5B (Strict Few-Shot Prompt)...")
+                Log.i(TAG, "🦙 Generating on-device auto-reply for $senderName with Qwen2-0.5B (displayName='$displayName')...")
                 val startTime = System.currentTimeMillis()
 
                 val generated = StringBuilder()
@@ -314,11 +319,18 @@ class LlamaModelRunner private constructor(private val context: Context) {
                     cleanResult = cleanResult.substring(1, cleanResult.length - 1).trim()
                 }
 
-                Log.i(TAG, "⚡ Qwen2-0.5B generated high-quality reply in ${latencyMs}ms: '$cleanResult'")
+                // Ensure the output cleanly starts with "Auto-Reply: "
+                val finalReply = if (cleanResult.startsWith("Auto-Reply:", ignoreCase = true)) {
+                    "Auto-Reply: " + cleanResult.substring("Auto-Reply:".length).trim()
+                } else {
+                    "Auto-Reply: $cleanResult"
+                }
 
-                if (cleanResult.isNotBlank()) {
-                    _lastGeneratedReply.value = cleanResult
-                    return@withContext cleanResult
+                Log.i(TAG, "⚡ Qwen2-0.5B generated high-quality reply in ${latencyMs}ms: '$finalReply'")
+
+                if (finalReply.isNotBlank()) {
+                    _lastGeneratedReply.value = finalReply
+                    return@withContext finalReply
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Llama generation fallback: ${e.message}")
@@ -326,7 +338,7 @@ class LlamaModelRunner private constructor(private val context: Context) {
         }
 
         // Guaranteed fallback if model is still downloading or unloading
-        val fallbackReply = "Hey $senderName! $userName is in a deep work focus session till $returnTime. I'll get back to you right after. Please call twice if urgent."
+        val fallbackReply = "Auto-Reply: $displayName is in a deep work focus session till $returnTime and will get back to you right after. Please call twice if urgent."
         _lastGeneratedReply.value = fallbackReply
         fallbackReply
     }

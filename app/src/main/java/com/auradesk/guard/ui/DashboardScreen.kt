@@ -50,7 +50,7 @@ fun DashboardScreen(onReplayTour: () -> Unit = {}) {
     val sensors   by GuardService.liveSensors.collectAsState()
 
     val prefs = remember { context.getSharedPreferences("auradesk_prefs", Context.MODE_PRIVATE) }
-    var activeName by remember { mutableStateOf(prefs.getString("user_name", "Arjun") ?: "Arjun") }
+    var activeName by remember { mutableStateOf(prefs.getString("user_name", "")?.trim() ?: "") }
     var showNameDialog by remember { mutableStateOf(false) }
     var editedName by remember { mutableStateOf(activeName) }
 
@@ -65,23 +65,23 @@ fun DashboardScreen(onReplayTour: () -> Unit = {}) {
     if (showNameDialog) {
         AlertDialog(
             onDismissRequest = { showNameDialog = false },
-            title = { Text("Update Call-Sign", fontWeight = FontWeight.Bold) },
+            title = { Text(if (activeName.isNotBlank()) "Update Name / Call-Sign" else "Set Your Name", fontWeight = FontWeight.Bold) },
             text = {
                 Column {
-                    Text("The bodyguard triggers priority capture when a visitor calls this name.", fontSize = 13.sp, color = GlassColors.TextSecondary)
+                    Text("Your name is used for on-device voice detection and auto-replies. If left empty, 'the user' will be used.", fontSize = 13.sp, color = GlassColors.TextSecondary)
                     Spacer(modifier = Modifier.height(12.dp))
                     OutlinedTextField(
                         value = editedName,
                         onValueChange = { editedName = it },
                         singleLine = true,
-                        placeholder = { Text("e.g. Arjun") },
+                        placeholder = { Text("Enter your name (optional)") },
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
             },
             confirmButton = {
                 TextButton(onClick = {
-                    val finalName = editedName.trim().ifBlank { "Arjun" }
+                    val finalName = editedName.trim()
                     prefs.edit().putString("user_name", finalName).apply()
                     activeName = finalName
                     GuardService.ensureAudioCapsuleManager(context).setUserName(finalName)
@@ -155,9 +155,9 @@ fun DashboardScreen(onReplayTour: () -> Unit = {}) {
                             }
                         ) {
                             GlassBadge(
-                                text = "Callsign: $activeName",
-                                tintColor = GlassColors.GlassGreen,
-                                textColor = GlassColors.AccentGreen
+                                text = if (activeName.isNotBlank()) "Callsign: $activeName" else "Set Name",
+                                tintColor = if (activeName.isNotBlank()) GlassColors.GlassGreen else GlassColors.GlassBlue,
+                                textColor = if (activeName.isNotBlank()) GlassColors.AccentGreen else GlassColors.AccentBlue
                             )
                         }
                         Spacer(modifier = Modifier.width(4.dp))
@@ -801,7 +801,7 @@ fun OnDeviceLlamaCard(context: Context) {
                         isGeneratingTest = true
                         coroutineScope.launch {
                             val prefs = context.getSharedPreferences("auradesk_prefs", Context.MODE_PRIVATE)
-                            val userName = prefs.getString("user_name", "Arjun") ?: "Arjun"
+                            val userName = prefs.getString("user_name", "")?.trim() ?: ""
                             val returnTime = llamaRunner.calculateReturnTime(45)
                             val res = llamaRunner.generateAutoReply(testSender, testMessage, returnTime, userName)
                             testGeneratedResult = res
