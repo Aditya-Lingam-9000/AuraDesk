@@ -1,11 +1,13 @@
 package com.auradesk.guard.notifications
 
+import android.app.ActivityOptions
 import android.app.Notification
 import android.app.RemoteInput
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
@@ -171,19 +173,41 @@ class FocusNotificationListenerService : NotificationListenerService() {
             for (action in actions) {
                 val remoteInputs = action.remoteInputs
                 if (!remoteInputs.isNullOrEmpty()) {
-                    val intent = Intent()
+                    val intent = Intent().apply {
+                        addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+                    }
                     val bundle = Bundle()
                     for (remoteInput in remoteInputs) {
                         bundle.putCharSequence(remoteInput.resultKey, autoReply)
                     }
                     RemoteInput.addResultsToIntent(remoteInputs, intent, bundle)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        RemoteInput.setResultsSource(intent, RemoteInput.SOURCE_FREE_FORM_INPUT)
+                    }
+
+                    val options = ActivityOptions.makeBasic().apply {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                            setPendingIntentBackgroundActivityStartMode(
+                                ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+                            )
+                        }
+                    }
+
                     try {
-                        action.actionIntent.send(this, 0, intent)
+                        action.actionIntent.send(this, 0, intent, null, null, null, options.toBundle())
                         repliedViaRemoteInput = true
-                        Log.i(TAG, "🚀 Single direct auto-reply sent to $appName ($senderName) via RemoteInput!")
+                        Log.i(TAG, "🚀 Single direct auto-reply sent to $appName ($senderName) via RemoteInput with instant network dispatch!")
                         break
                     } catch (e: Exception) {
-                        Log.w(TAG, "Direct reply dispatch error", e)
+                        Log.w(TAG, "Direct reply with options error, falling back", e)
+                        try {
+                            action.actionIntent.send(this, 0, intent)
+                            repliedViaRemoteInput = true
+                            Log.i(TAG, "🚀 Fallback auto-reply sent to $appName ($senderName)")
+                            break
+                        } catch (e2: Exception) {
+                            Log.e(TAG, "Fallback reply failed", e2)
+                        }
                     }
                 }
             }
