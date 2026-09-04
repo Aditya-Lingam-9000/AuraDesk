@@ -159,11 +159,10 @@ class LlamaModelRunner private constructor(private val context: Context) {
         try {
             llamaModel?.close()
             llamaModel = LlamaModel.load(file.absolutePath) {
-                contextSize = 1536
+                contextSize = 2048
                 threads = 4
                 temperature = 0.25f
-                maxTokens = 90
-                stopSequences = listOf("<|im_end|>", "<|endoftext|>", "<|im_start|>", "\n\nUser:", "User:", "Input:")
+                maxTokens = 80
             }
             _llamaState.value = LlamaState.Ready
             Log.i(TAG, "✅ Qwen2-0.5B-Instruct successfully loaded in memory via llama.cpp NDK!")
@@ -297,19 +296,30 @@ class LlamaModelRunner private constructor(private val context: Context) {
                 Log.i(TAG, "🦙 Generating on-device auto-reply for $senderName with Qwen2-0.5B (displayName='$displayName')...")
                 val startTime = System.currentTimeMillis()
 
-                val generated = StringBuilder()
-                model.generateStream(prompt).collect { token ->
-                    val cleanToken = token.replace("<|im_end|>", "").replace("<|endoftext|>", "").replace("<|im_start|>", "")
-                    generated.append(cleanToken)
-                }
+                // Robust blocking generation in native C++ without JNI callback bridge crashes
+                val rawResult = model.generate(prompt)
 
                 val latencyMs = System.currentTimeMillis() - startTime
-                var cleanResult = generated.toString().trim()
+                var cleanResult = rawResult.trim()
+                    .replace("<|im_end|>", "")
+                    .replace("<|endoftext|>", "")
+                    .replace("<|im_start|>", "")
                     .removePrefix("Assistant:")
                     .removePrefix("Reply:")
                     .removePrefix("AuraDesk:")
                     .removePrefix("Output:")
                     .trim()
+
+                // Cut off accidental turn repeats
+                if (cleanResult.contains("<|im_start|>")) {
+                    cleanResult = cleanResult.substringBefore("<|im_start|>").trim()
+                }
+                if (cleanResult.contains("User:")) {
+                    cleanResult = cleanResult.substringBefore("User:").trim()
+                }
+                if (cleanResult.contains("\n\n")) {
+                    cleanResult = cleanResult.substringBefore("\n\n").trim()
+                }
 
                 // Strip surrounding quotes if model added them
                 if (cleanResult.startsWith("\"") && cleanResult.endsWith("\"") && cleanResult.length > 2) {
@@ -332,8 +342,8 @@ class LlamaModelRunner private constructor(private val context: Context) {
                     _lastGeneratedReply.value = finalReply
                     return@withContext finalReply
                 }
-            } catch (e: Exception) {
-                Log.w(TAG, "Llama generation fallback: ${e.message}")
+            } catch (e: Throwable) {
+                Log.e(TAG, "Llama generation error: ${e.message}", e)
             }
         }
 
@@ -373,22 +383,25 @@ class LlamaModelRunner private constructor(private val context: Context) {
                     append("<|im_start|>assistant\n")
                 }
 
-                val result = StringBuilder()
-                model.generateStream(prompt).collect { token ->
-                    result.append(token.replace("<|im_end|>", "").replace("<|endoftext|>", "").replace("<|im_start|>", ""))
-                }
-
-                var clean = result.toString().trim()
+                val rawResult = model.generate(prompt)
+                var clean = rawResult.trim()
+                    .replace("<|im_end|>", "")
+                    .replace("<|endoftext|>", "")
+                    .replace("<|im_start|>", "")
                     .removePrefix("Assistant:")
                     .removePrefix("Output:")
                     .trim()
+
+                if (clean.contains("\n")) {
+                    clean = clean.substringBefore("\n").trim()
+                }
 
                 if (clean.startsWith("\"") && clean.endsWith("\"") && clean.length > 2) {
                     clean = clean.substring(1, clean.length - 1).trim()
                 }
 
                 if (clean.isNotBlank()) return@withContext clean
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 Log.w(TAG, "Summary generation fallback: ${e.message}")
             }
         }
