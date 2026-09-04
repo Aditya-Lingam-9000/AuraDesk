@@ -17,6 +17,7 @@ import com.auradesk.guard.service.GuardService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.util.concurrent.ConcurrentHashMap
 
 data class DigitalNotification(
     val senderName: String,
@@ -31,6 +32,20 @@ class FocusNotificationListenerService : NotificationListenerService() {
 
     companion object {
         private const val TAG = "FocusNotificationListener"
+
+        // Send at most ONE auto-reply per sender every 20 minutes during deep work
+        private const val SENDER_COOLDOWN_MS = 20 * 60 * 1000L
+
+        private val senderReplyHistory = ConcurrentHashMap<String, Long>()
+        private val recentSentReplies = ConcurrentHashMap<String, Long>()
+        private val processedMessageHashes = ConcurrentHashMap<String, Long>()
+
+        fun clearCooldowns() {
+            senderReplyHistory.clear()
+            recentSentReplies.clear()
+            processedMessageHashes.clear()
+            Log.i(TAG, "🔄 Cleared notification auto-reply cooldowns on disarm/reset.")
+        }
 
         private val SUPPORTED_PACKAGES = mapOf(
             "com.whatsapp" to "WhatsApp",
@@ -50,9 +65,12 @@ class FocusNotificationListenerService : NotificationListenerService() {
         super.onNotificationPosted(sbn)
         if (sbn == null) return
 
-        // 1. Only intercept if AuraDesk is Armed Face-Down in Deep Work
+        // 1. Strictly verify the device is actively running AND face-down armed
+        val isRunning = GuardService.isRunning.value
         val isArmed = GuardService.isArmed.value
-        if (!isArmed) return
+        if (!isRunning || !isArmed) {
+            return
+        }
 
         val pkgName = sbn.packageName ?: return
         val appName = SUPPORTED_PACKAGES[pkgName] ?: return
@@ -60,17 +78,51 @@ class FocusNotificationListenerService : NotificationListenerService() {
         val notification = sbn.notification ?: return
         val extras = notification.extras ?: return
 
-        val title = extras.getString(Notification.EXTRA_TITLE)?.trim() ?: ""
-        val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.trim() ?: ""
+        val rawTitle = extras.getString(Notification.EXTRA_TITLE)?.trim() ?: ""
+        val rawText = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.trim() ?: ""
 
-        if (title.isBlank() || text.isBlank()) return
-        // Skip ongoing / media playback / system summary
+        if (rawTitle.isBlank() || rawText.isBlank()) return
+        // Skip ongoing events (e.g. active call, media playback, file download)
         if (notification.flags and Notification.FLAG_ONGOING_EVENT != 0) return
 
-        Log.i(TAG, "📩 Intercepted incoming $appName notification from '$title': '$text'")
+        // 2. Prevent self-reply echo loop: WhatsApp updates notifications after RemoteInput dispatch
+        if (rawText.startsWith("You:", ignoreCase = true) ||
+            rawText.contains("in deep work", ignoreCase = true) ||
+            rawText.contains("focus session", ignoreCase = true) ||
+            rawText.contains("AuraDesk", ignoreCase = true) ||
+            recentSentReplies.keys.any { sentSnippet -> rawText.contains(sentSnippet, ignoreCase = true) }
+        ) {
+            Log.d(TAG, "⏭️ Ignoring self-sent notification update echo: '$rawText'")
+            return
+        }
+
+        // 3. Per-Sender Cooldown: Send strictly ONE reply per sender every 20 minutes
+        val normalizedSender = rawTitle.lowercase().trim()
+        val now = System.currentTimeMillis()
+        val lastRepliedTime = senderReplyHistory[normalizedSender] ?: 0L
+
+        if (now - lastRepliedTime < SENDER_COOLDOWN_MS) {
+            val remainingSec = (SENDER_COOLDOWN_MS - (now - lastRepliedTime)) / 1000
+            Log.i(TAG, "⏳ Sender '$rawTitle' already replied to recently. Cooldown active for ${remainingSec}s more. Dropping duplicate message.")
+            return
+        }
+
+        // 4. Message Hash Deduplication: Never process the exact same message twice
+        val msgKey = "$normalizedSender:$rawText"
+        val lastMsgTime = processedMessageHashes[msgKey] ?: 0L
+        if (now - lastMsgTime < SENDER_COOLDOWN_MS) {
+            Log.d(TAG, "⏭️ Duplicate message key already handled: '$msgKey'")
+            return
+        }
+
+        // Mark as handled immediately to block any rapid concurrent notification bursts
+        senderReplyHistory[normalizedSender] = now
+        processedMessageHashes[msgKey] = now
+
+        Log.i(TAG, "📩 Intercepted incoming $appName notification from '$rawTitle': '$rawText' (Single Reply Scheduled)")
 
         serviceScope.launch {
-            processIncomingMessage(sbn, title, text, appName)
+            processIncomingMessage(sbn, rawTitle, rawText, appName)
         }
     }
 
@@ -80,13 +132,19 @@ class FocusNotificationListenerService : NotificationListenerService() {
         messageText: String,
         appName: String
     ) {
+        // Double-check armed state: if the user lifted the phone while coroutine was starting, ABORT immediately!
+        if (!GuardService.isRunning.value || !GuardService.isArmed.value) {
+            Log.i(TAG, "🚫 Phone was lifted or guard disarmed. Aborting auto-reply to $senderName.")
+            return
+        }
+
         val prefs = getSharedPreferences("auradesk_prefs", Context.MODE_PRIVATE)
         val userName = prefs.getString("user_name", "Arjun") ?: "Arjun"
 
         val llamaRunner = LlamaModelRunner.getInstance(this)
         val returnTime = llamaRunner.calculateReturnTime(focusDurationMinutes = 45)
 
-        // Phase 7 Prompt A: Generate on-device Auto-Reply via Qwen2-0.5B
+        // Generate single on-device auto-reply via Qwen2-0.5B
         val autoReply = llamaRunner.generateAutoReply(
             senderName = senderName,
             messageText = messageText,
@@ -94,9 +152,19 @@ class FocusNotificationListenerService : NotificationListenerService() {
             userName = userName
         )
 
-        Log.i(TAG, "🤖 Generated Auto-Reply for $senderName: '$autoReply'")
+        // Store snippet in echo prevention cache
+        val echoKey = if (autoReply.length > 20) autoReply.substring(0, 20) else autoReply
+        recentSentReplies[echoKey] = System.currentTimeMillis()
 
-        // 1. Direct Notification Reply via RemoteInput
+        // Double-check armed state once more before actual dispatch!
+        if (!GuardService.isRunning.value || !GuardService.isArmed.value) {
+            Log.i(TAG, "🚫 Device is no longer face-down. Cancelling dispatch to $senderName.")
+            return
+        }
+
+        Log.i(TAG, "🤖 Generated Single Auto-Reply for $senderName: '$autoReply'")
+
+        // 1. Direct Notification Reply via RemoteInput (EXACTLY ONCE)
         var repliedViaRemoteInput = false
         val actions = sbn.notification.actions
         if (actions != null) {
@@ -112,7 +180,7 @@ class FocusNotificationListenerService : NotificationListenerService() {
                     try {
                         action.actionIntent.send(this, 0, intent)
                         repliedViaRemoteInput = true
-                        Log.i(TAG, "🚀 Direct auto-reply sent to $appName via RemoteInput!")
+                        Log.i(TAG, "🚀 Single direct auto-reply sent to $appName ($senderName) via RemoteInput!")
                         break
                     } catch (e: Exception) {
                         Log.w(TAG, "Direct reply dispatch error", e)
@@ -137,7 +205,7 @@ class FocusNotificationListenerService : NotificationListenerService() {
             taskSummary = autoReply,
             aiActionItem = messageText,
             aiDeadline = returnTime,
-            aiUrgencyReason = "Digital $appName notification auto-replied via Qwen2-0.5B",
+            aiUrgencyReason = "Digital $appName notification (Single auto-reply sent via Qwen2-0.5B)",
             targetComponent = "$appName Interruption",
             rawTranscript = messageText,
             hasVoiceTranscript = false,

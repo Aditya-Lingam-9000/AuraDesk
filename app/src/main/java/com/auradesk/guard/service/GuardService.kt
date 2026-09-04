@@ -610,6 +610,7 @@ class GuardService : LifecycleService() {
                         lastCapsuleFinishTime = 0L
                         lastZoneVibrated = com.auradesk.guard.vision.RadarZone.NONE
                         closestZoneInVisit = com.auradesk.guard.vision.RadarZone.NONE
+                        com.auradesk.guard.notifications.FocusNotificationListenerService.clearCooldowns()
                     }
                     lastArmedState = faceDown
                 }
@@ -645,6 +646,7 @@ class GuardService : LifecycleService() {
         radarCollectJob?.cancel()
         autoPruneJob?.cancel()
         autoPruneJob = null
+        com.auradesk.guard.notifications.FocusNotificationListenerService.clearCooldowns()
         stopForeground(STOP_FOREGROUND_REMOVE)
         Log.i(TAG, "GuardService stopped")
     }
