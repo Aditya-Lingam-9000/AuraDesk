@@ -159,11 +159,11 @@ class LlamaModelRunner private constructor(private val context: Context) {
         try {
             llamaModel?.close()
             llamaModel = LlamaModel.load(file.absolutePath) {
-                contextSize = 1024
+                contextSize = 1536
                 threads = 4
-                temperature = 0.6f
-                maxTokens = 80
-                stopSequences = listOf("<|im_end|>", "<|endoftext|>", "\n\nUser:", "User:")
+                temperature = 0.25f
+                maxTokens = 90
+                stopSequences = listOf("<|im_end|>", "<|endoftext|>", "<|im_start|>", "\n\nUser:", "User:", "Input:")
             }
             _llamaState.value = LlamaState.Ready
             Log.i(TAG, "✅ Qwen2-0.5B-Instruct successfully loaded in memory via llama.cpp NDK!")
@@ -251,8 +251,7 @@ class LlamaModelRunner private constructor(private val context: Context) {
 
     /**
      * Phase 7 Prompt A: Auto-Reply System
-     * "You are focus guard for userName deep work till returnTime write short polite reply
-     *  style from past messages include return time offer urgent tap Max 30 words"
+     * High-quality few-shot prompt with strict relevance and tone matching.
      */
     suspend fun generateAutoReply(
         senderName: String,
@@ -265,28 +264,57 @@ class LlamaModelRunner private constructor(private val context: Context) {
             try {
                 val prompt = buildString {
                     append("<|im_start|>system\n")
-                    append("You are AuraDesk, focus guard for $userName. ")
-                    append("$userName is in deep work till $returnTime. ")
-                    append("Write a short, polite reply in under 30 words. ")
-                    append("Include return time $returnTime. Offer urgent call override if blocking. ")
-                    append("Keep the same language as incoming message.<|im_end|>\n")
+                    append("You are AuraDesk, an elite executive focus assistant for $userName.\n")
+                    append("$userName is currently locked in a deep work session and will return at $returnTime.\n\n")
+                    append("TASK:\n")
+                    append("Generate a single, natural, highly relevant auto-reply to the incoming message.\n\n")
+                    append("STRICT RULES:\n")
+                    append("1. RELEVANCE: Directly reference the specific subject, action, or question in the message (e.g. PR review, bug, meeting, report, greeting, lunch). Never send a generic template.\n")
+                    append("2. RETURN TIME: Explicitly state $userName will reply right after $returnTime.\n")
+                    append("3. URGENCY: Offer that if it is an urgent blocker, they can call twice to reach $userName.\n")
+                    append("4. TONE & LANGUAGE: Mirror the sender's exact language, style, and vocabulary (e.g. professional English, casual English, or Hinglish like 'bhai/yaar/hote hi').\n")
+                    append("5. LENGTH: 1 to 2 short sentences (maximum 28 words).\n")
+                    append("6. OUTPUT FORMAT: Output ONLY the reply text. Do NOT include quotes, prefixes (like 'Reply:' or 'Assistant:'), or any preamble.\n\n")
+                    append("FEW-SHOT EXAMPLES:\n\n")
+                    append("User: Message from Priya: Hey Arjun, can you review the payment auth PR before deployment?\n")
+                    append("Assistant: Hey Priya! Arjun is in deep work till $returnTime. He will review your payment auth PR right after. Please call twice if it is an urgent blocker.\n\n")
+                    append("User: Message from Rohit: Bhai sham ko chai pine chalte hain kya?\n")
+                    append("Assistant: Rohit bhai, abhi focus session chal raha hai $returnTime tak. Khatam hote hi ping karta hoon chai ke liye!\n\n")
+                    append("User: Message from Vikram (VP): Need the Q3 infrastructure budget sheet ASAP.\n")
+                    append("Assistant: Hi Vikram, Arjun is focused in a deep work block until $returnTime. He will send the Q3 infrastructure budget sheet immediately after. If critical, please call.\n\n")
+                    append("User: Message from Alex: Good morning! Let me know when you get a chance to test the new build.\n")
+                    append("Assistant: Good morning Alex! Arjun is in focus till $returnTime. He will test the new build and catch up with you right after.<|im_end|>\n")
                     append("<|im_start|>user\n")
                     append("Message from $senderName: $messageText<|im_end|>\n")
                     append("<|im_start|>assistant\n")
                 }
 
-                Log.i(TAG, "🦙 Generating on-device auto-reply for $senderName with Qwen2-0.5B...")
+                Log.i(TAG, "🦙 Generating on-device auto-reply for $senderName with Qwen2-0.5B (Strict Few-Shot Prompt)...")
                 val startTime = System.currentTimeMillis()
 
                 val generated = StringBuilder()
                 model.generateStream(prompt).collect { token ->
-                    val cleanToken = token.replace("<|im_end|>", "").replace("<|endoftext|>", "")
+                    val cleanToken = token.replace("<|im_end|>", "").replace("<|endoftext|>", "").replace("<|im_start|>", "")
                     generated.append(cleanToken)
                 }
 
                 val latencyMs = System.currentTimeMillis() - startTime
-                val cleanResult = generated.toString().trim()
-                Log.i(TAG, "⚡ Qwen2-0.5B generated reply in ${latencyMs}ms: '$cleanResult'")
+                var cleanResult = generated.toString().trim()
+                    .removePrefix("Assistant:")
+                    .removePrefix("Reply:")
+                    .removePrefix("AuraDesk:")
+                    .removePrefix("Output:")
+                    .trim()
+
+                // Strip surrounding quotes if model added them
+                if (cleanResult.startsWith("\"") && cleanResult.endsWith("\"") && cleanResult.length > 2) {
+                    cleanResult = cleanResult.substring(1, cleanResult.length - 1).trim()
+                }
+                if (cleanResult.startsWith("'") && cleanResult.endsWith("'") && cleanResult.length > 2) {
+                    cleanResult = cleanResult.substring(1, cleanResult.length - 1).trim()
+                }
+
+                Log.i(TAG, "⚡ Qwen2-0.5B generated high-quality reply in ${latencyMs}ms: '$cleanResult'")
 
                 if (cleanResult.isNotBlank()) {
                     _lastGeneratedReply.value = cleanResult
@@ -316,18 +344,37 @@ class LlamaModelRunner private constructor(private val context: Context) {
             try {
                 val prompt = buildString {
                     append("<|im_start|>system\n")
-                    append("You are AuraDesk task extractor. Summarize the visitor conversation into a single line format: Person - Task - Deadline.<|im_end|>\n")
+                    append("You are AuraDesk task extractor.\n")
+                    append("Extract actionable desk interruption tasks into a single clean line.\n")
+                    append("Format: Person — Action Item — Deadline\n\n")
+                    append("RULES:\n")
+                    append("1. Output ONLY the one-line task. No extra words, no explanation, no quotes.\n")
+                    append("2. Infer implicit deadlines (e.g. 'before sprint demo' -> 'Today 4:00 PM (Sprint Demo)').\n")
+                    append("3. Keep it crisp and professional.\n\n")
+                    append("EXAMPLES:\n")
+                    append("User: Person: Rahul. Transcript: Hey, make sure you merge the payment schema fix before the client call at 5\n")
+                    append("Assistant: Rahul — Merge payment schema fix — Today 5:00 PM (Client Call)\n\n")
+                    append("User: Person: Sneha. Transcript: Can you sign off on the design assets today?\n")
+                    append("Assistant: Sneha — Review and sign off on design assets — Today EOD<|im_end|>\n")
                     append("<|im_start|>user\n")
-                    append("Person: $personName\nTranscript: $transcript<|im_end|>\n")
+                    append("Person: $personName. Transcript: $transcript<|im_end|>\n")
                     append("<|im_start|>assistant\n")
                 }
 
                 val result = StringBuilder()
                 model.generateStream(prompt).collect { token ->
-                    result.append(token.replace("<|im_end|>", "").replace("<|endoftext|>", ""))
+                    result.append(token.replace("<|im_end|>", "").replace("<|endoftext|>", "").replace("<|im_start|>", ""))
                 }
 
-                val clean = result.toString().trim()
+                var clean = result.toString().trim()
+                    .removePrefix("Assistant:")
+                    .removePrefix("Output:")
+                    .trim()
+
+                if (clean.startsWith("\"") && clean.endsWith("\"") && clean.length > 2) {
+                    clean = clean.substring(1, clean.length - 1).trim()
+                }
+
                 if (clean.isNotBlank()) return@withContext clean
             } catch (e: Exception) {
                 Log.w(TAG, "Summary generation fallback: ${e.message}")
