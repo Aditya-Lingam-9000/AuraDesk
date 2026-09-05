@@ -30,12 +30,15 @@ import java.util.*
 
 @Composable
 fun GuardArmedScreen(onDisarm: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val deepWorkState by GuardService.liveDeepWork.collectAsState()
     val radar by GuardService.liveRadar.collectAsState()
     val latestHapticAlert by GuardService.latestHapticAlert.collectAsState()
     val audioCapsule by GuardService.liveAudioCapsule.collectAsState()
     val savedNotes by GuardService.liveInterruptions.collectAsState()
     val digitalNotif by GuardService.liveDigitalNotification.collectAsState()
+    val llamaRunner = remember { com.auradesk.guard.llm.LlamaModelRunner.getInstance(context) }
+    val llamaState by llamaRunner.llamaState.collectAsState()
 
     var elapsedSeconds by remember { mutableStateOf(0L) }
     LaunchedEffect(Unit) {
@@ -73,8 +76,6 @@ fun GuardArmedScreen(onDisarm: () -> Unit) {
         ),
         label = "breathAlpha"
     )
-
-    val shimmerOffset = rememberShimmerOffset()
 
     Box(
         modifier = Modifier
@@ -118,6 +119,28 @@ fun GuardArmedScreen(onDisarm: () -> Unit) {
                     color = Color(0xFFE5E7EB)
                 )
 
+                when (llamaState) {
+                    is com.auradesk.guard.llm.LlamaState.Loading -> {
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Text(
+                            text = "Mounting On-Device LLM into RAM...",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFFFBBF24)
+                        )
+                    }
+                    is com.auradesk.guard.llm.LlamaState.Ready -> {
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Text(
+                            text = "Qwen2-0.5B INT4 Resident in RAM",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF10B981)
+                        )
+                    }
+                    else -> {}
+                }
+
                 // Phase 7: Subtle OLED Digital Notification Ticker
                 digitalNotif?.let { notif ->
                     Spacer(modifier = Modifier.height(10.dp))
@@ -136,7 +159,7 @@ fun GuardArmedScreen(onDisarm: () -> Unit) {
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "💬 ${notif.appName} • ${notif.senderName}",
+                                    text = "${notif.appName} • ${notif.senderName}",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color(0xFF60A5FA)
@@ -258,7 +281,7 @@ fun GuardArmedScreen(onDisarm: () -> Unit) {
                                     .background(Color(0xFFEF4444))
                             )
                             Text(
-                                text = "🎙️ Recording Voice Capsule (${audioCapsule.remainingSeconds}s) • Speak Now",
+                                text = "Recording Voice Capsule (${audioCapsule.remainingSeconds}s) • Speak Now",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFFFCA5A5),
@@ -374,9 +397,11 @@ fun GuardArmedScreen(onDisarm: () -> Unit) {
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    Text(
-                                        text = if (note.isUrgent) "🚨" else "📌",
-                                        fontSize = 13.sp
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .clip(CircleShape)
+                                            .background(noteColor)
                                     )
                                     Column(modifier = Modifier.weight(1f)) {
                                         val displayAction = if (note.aiActionItem.isNotBlank()) {
@@ -403,7 +428,7 @@ fun GuardArmedScreen(onDisarm: () -> Unit) {
                                             )
                                             if (note.aiDeadline.isNotBlank()) {
                                                 Text(
-                                                    text = "⏰ ${note.aiDeadline}",
+                                                    text = "Due: ${note.aiDeadline}",
                                                     fontSize = 10.sp,
                                                     fontWeight = FontWeight.Bold,
                                                     color = Color(0xFFFBBF24)
@@ -419,26 +444,15 @@ fun GuardArmedScreen(onDisarm: () -> Unit) {
                     Spacer(modifier = Modifier.height(10.dp))
                 }
 
-                // Glass Disarm Button
+                // Disarm Button (Clean solid OLED dark finish)
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 8.dp)
                         .height(48.dp)
-                        .drawBehind {
-                            val cornerPx = 10.dp.toPx()
-                            val rrect = RoundRect(Rect(Offset.Zero, size), CornerRadius(cornerPx))
-                            val path = Path().apply { addRoundRect(rrect) }
-                            drawPath(path, color = Color(0xFF18181B))
-                            drawLine(
-                                color = Color(0x55FFFFFF),
-                                start = Offset(cornerPx, 1.5f),
-                                end = Offset(size.width - cornerPx, 1.5f),
-                                strokeWidth = 1f, cap = StrokeCap.Round
-                            )
-                            clipPath(path) { drawGlassShimmer(shimmerOffset, alpha = 0.15f) }
-                            drawPath(path, color = Color(0x33FFFFFF), style = Stroke(width = 1.dp.toPx()))
-                        }
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF18181B))
+                        .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(10.dp))
                         .clickable(onClick = onDisarm),
                     contentAlignment = Alignment.Center
                 ) {

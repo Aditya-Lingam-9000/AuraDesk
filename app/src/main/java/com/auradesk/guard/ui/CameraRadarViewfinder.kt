@@ -27,13 +27,14 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import com.auradesk.guard.service.GuardService
+import com.auradesk.guard.ui.glass.*
 import com.auradesk.guard.ui.theme.*
 import java.util.concurrent.Executors
 
@@ -61,10 +62,8 @@ fun CameraRadarViewfinder(
         hasCameraPermission = granted
     }
 
-    Card(
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = PureWhite),
-        border = BorderStroke(1.dp, BorderStrong),
+    GlassCard(
+        cornerRadius = 14.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
@@ -77,7 +76,7 @@ fun CameraRadarViewfinder(
                     Icon(
                         imageVector = Icons.Default.Videocam,
                         contentDescription = null,
-                        tint = TextPrimary,
+                        tint = GlassColors.IconColor,
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
@@ -85,7 +84,7 @@ fun CameraRadarViewfinder(
                         "Rear Vision Radar Feed",
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp,
-                        color = TextPrimary
+                        color = GlassColors.TextPrimary
                     )
                 }
 
@@ -93,7 +92,7 @@ fun CameraRadarViewfinder(
                     onClick = onClose,
                     modifier = Modifier.size(24.dp)
                 ) {
-                    Icon(Icons.Default.Close, contentDescription = "Close", tint = TextMuted, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.Close, contentDescription = "Close", tint = GlassColors.IconColor, modifier = Modifier.size(16.dp))
                 }
             }
 
@@ -104,23 +103,21 @@ fun CameraRadarViewfinder(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(160.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(AppBg)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0x15000000))
                         .padding(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    Icon(Icons.Default.Videocam, contentDescription = null, tint = TextMuted, modifier = Modifier.size(32.dp))
+                    Icon(Icons.Default.Videocam, contentDescription = null, tint = GlassColors.IconColor, modifier = Modifier.size(32.dp))
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("Camera permission required for Vision Radar", fontSize = 12.sp, color = TextSecondary)
+                    Text("Camera permission required for Vision Radar", fontSize = 12.sp, color = GlassColors.TextSecondary)
                     Spacer(modifier = Modifier.height(10.dp))
-                    Button(
+                    GlassButton(
+                        text = "Grant Camera Access",
                         onClick = { permissionLauncher.launch(android.Manifest.permission.CAMERA) },
-                        colors = ButtonDefaults.buttonColors(containerColor = BrandPrimary),
-                        shape = RoundedCornerShape(6.dp)
-                    ) {
-                        Text("Grant Camera Access", fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
-                    }
+                        isPrimary = true
+                    )
                 }
             } else {
                 // Viewfinder Surface Box

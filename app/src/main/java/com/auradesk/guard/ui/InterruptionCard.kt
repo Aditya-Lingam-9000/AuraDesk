@@ -46,7 +46,7 @@ fun InterruptionCard(
         modifier = Modifier.fillMaxWidth(),
         tintColor = if (capsule.isUrgent) GlassColors.GlassRed.copy(alpha = 0.3f) else Color.Transparent
     ) {
-        Column(modifier = Modifier.padding(20.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
             // Header: avatar + name + badges
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -91,7 +91,7 @@ fun InterruptionCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             // Action Item Box
             GlassSection(modifier = Modifier.fillMaxWidth()) {
@@ -151,7 +151,7 @@ fun InterruptionCard(
                 }
                 IconButton(onClick = { onDelete(capsule.id) }, modifier = Modifier.size(28.dp)) {
                     Icon(Icons.Default.DeleteOutline, contentDescription = "Delete",
-                        tint = GlassColors.AccentRed, modifier = Modifier.size(18.dp))
+                        tint = GlassColors.IconColor, modifier = Modifier.size(18.dp))
                 }
             }
 

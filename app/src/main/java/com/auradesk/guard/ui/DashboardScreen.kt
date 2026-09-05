@@ -7,12 +7,14 @@ import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -38,7 +40,8 @@ import kotlinx.coroutines.launch
 enum class DashboardTab(val title: String, val icon: ImageVector) {
     FOCUS("Focus", Icons.Default.HourglassTop),
     RADAR("Radar", Icons.Default.Radar),
-    LOGS("Interruption Log", Icons.Default.History)
+    OFFICE_KIT("Office Kit", Icons.Default.LaptopMac),
+    LOGS_AI("AI & Logs", Icons.Default.Psychology)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -47,7 +50,6 @@ fun DashboardScreen(onReplayTour: () -> Unit = {}) {
     val context   = LocalContext.current
     val isRunning by GuardService.isRunning.collectAsState()
     val isArmed   by GuardService.isArmed.collectAsState()
-    val sensors   by GuardService.liveSensors.collectAsState()
 
     val prefs = remember { context.getSharedPreferences("auradesk_prefs", Context.MODE_PRIVATE) }
     var activeName by remember { mutableStateOf(prefs.getString("user_name", "")?.trim() ?: "") }
@@ -121,12 +123,7 @@ fun DashboardScreen(onReplayTour: () -> Unit = {}) {
         }
     }
 
-    val sceneBackground = Brush.verticalGradient(
-        listOf(
-            if (isArmed) Color(0xFFBBDBFF) else Color(0xFFCFDBF2),
-            if (isArmed) Color(0xFFD1EBD8) else Color(0xFFE8ECF8)
-        )
-    )
+    val sceneBackground = if (isArmed) GlassColors.ArmedSceneBgGradient else GlassColors.SceneBgGradient
 
     Box(
         modifier = Modifier
@@ -162,7 +159,7 @@ fun DashboardScreen(onReplayTour: () -> Unit = {}) {
                         }
                         Spacer(modifier = Modifier.width(4.dp))
                         IconButton(onClick = onReplayTour) {
-                            Icon(Icons.Default.HelpOutline, contentDescription = "Help", tint = GlassColors.TextSecondary)
+                            Icon(Icons.AutoMirrored.Filled.HelpOutline, contentDescription = "Help", tint = GlassColors.IconColor)
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
@@ -186,15 +183,15 @@ fun DashboardScreen(onReplayTour: () -> Unit = {}) {
                             label = {
                                 Text(
                                     text = tab.title,
-                                    fontSize = 12.sp,
+                                    fontSize = 11.sp,
                                     fontWeight = if (selectedTab == tab) FontWeight.Bold else FontWeight.Medium
                                 )
                             },
                             colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor   = GlassColors.TextPrimary,
+                                selectedIconColor   = GlassColors.IconColor,
                                 selectedTextColor   = GlassColors.TextPrimary,
                                 indicatorColor      = Color(0x44FFFFFF),
-                                unselectedIconColor = GlassColors.TextMuted,
+                                unselectedIconColor = GlassColors.IconColorMuted,
                                 unselectedTextColor = GlassColors.TextMuted
                             )
                         )
@@ -206,12 +203,11 @@ fun DashboardScreen(onReplayTour: () -> Unit = {}) {
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
-                    .verticalScroll(rememberScrollState())
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                    .padding(horizontal = 16.dp)
             ) {
                 // Permission Banner
                 if (!hasPermissions) {
+                    Spacer(modifier = Modifier.height(12.dp))
                     GlassCard(
                         modifier = Modifier.fillMaxWidth(),
                         tintColor = GlassColors.GlassAmber.copy(alpha = 0.5f)
@@ -235,32 +231,84 @@ fun DashboardScreen(onReplayTour: () -> Unit = {}) {
                     }
                 }
 
-                when (selectedTab) {
-                    DashboardTab.FOCUS -> {
-                        FocusServiceCard(
-                            isRunning = isRunning, isArmed = isArmed,
-                            onToggleService = {
-                                if (isRunning) GuardService.stopService(context) else GuardService.startService(context)
-                            },
-                            onLaunchAod = { showAodPreview = true }
+                Spacer(modifier = Modifier.height(14.dp))
+
+                AnimatedContent(
+                    targetState = selectedTab,
+                    transitionSpec = {
+                        val forward = targetState.ordinal > initialState.ordinal
+                        (slideInHorizontally(
+                            animationSpec = spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow),
+                            initialOffsetX = { if (forward) it / 3 else -it / 3 }
+                        ) + fadeIn(
+                            animationSpec = tween(220, easing = LinearOutSlowInEasing)
+                        )).togetherWith(
+                            slideOutHorizontally(
+                                animationSpec = spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow),
+                                targetOffsetX = { if (forward) -it / 3 else it / 3 }
+                            ) + fadeOut(
+                                animationSpec = tween(180, easing = FastOutLinearInEasing)
+                            )
                         )
-                        OnDeviceLlamaCard(context = context)
-                        DeepWorkCadenceCard()
-                        SensorTelemetryCard(sensors = sensors, isRunning = isRunning)
-                        SystemStatusBadgeCard(context = context)
-                    }
-                    DashboardTab.RADAR -> {
-                        PerimeterRadarCard()
-                        HapticFeedbackCard(context = context)
-                    }
-                    DashboardTab.LOGS -> {
-                        VoiceCaptureSynthesizerCard(context = context)
-                        InterruptionHistoryCard(context = context)
-                        VivoNotesSyncCard(context = context)
+                    },
+                    label = "tabContentTransition",
+                    modifier = Modifier.weight(1f)
+                ) { tab ->
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        when (tab) {
+                            DashboardTab.FOCUS -> {
+                                StaggeredAnimatedCard(index = 0) {
+                                    FocusServiceCard(
+                                        isRunning = isRunning, isArmed = isArmed,
+                                        onToggleService = {
+                                            if (isRunning) GuardService.stopService(context) else GuardService.startService(context)
+                                        },
+                                        onLaunchAod = { showAodPreview = true }
+                                    )
+                                }
+                                StaggeredAnimatedCard(index = 1) {
+                                    DeepWorkCadenceCard()
+                                }
+                                StaggeredAnimatedCard(index = 2) {
+                                    SensorTelemetryCard(isRunning = isRunning)
+                                }
+                                StaggeredAnimatedCard(index = 3) {
+                                    SystemStatusBadgeCard(context = context)
+                                }
+                            }
+                            DashboardTab.RADAR -> {
+                                StaggeredAnimatedCard(index = 0) {
+                                    PerimeterRadarCard()
+                                }
+                                StaggeredAnimatedCard(index = 1) {
+                                    HapticFeedbackCard(context = context)
+                                }
+                            }
+                            DashboardTab.OFFICE_KIT -> {
+                                StaggeredAnimatedCard(index = 0) {
+                                    VivoOfficeKitCard(isArmed = isArmed)
+                                }
+                            }
+                            DashboardTab.LOGS_AI -> {
+                                StaggeredAnimatedCard(index = 0) {
+                                    OnDeviceLlamaCard(context = context)
+                                }
+                                StaggeredAnimatedCard(index = 1) {
+                                    VoiceCaptureSynthesizerCard(context = context)
+                                }
+                                StaggeredAnimatedCard(index = 2) {
+                                    InterruptionHistoryCard(context = context)
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
                     }
                 }
-
-                Spacer(modifier = Modifier.height(16.dp))
             }
         }
     }
@@ -279,7 +327,7 @@ fun FocusServiceCard(
         modifier = Modifier.fillMaxWidth(),
         tintColor = if (isArmed) GlassColors.GlassGreen else Color.Transparent
     ) {
-        Column(modifier = Modifier.padding(18.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -303,12 +351,12 @@ fun FocusServiceCard(
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 GlassButton(
                     text = if (isRunning) "Stop Guard" else "Start Guard",
-                    onClick = onToggleService, modifier = Modifier.weight(1.4f), isPrimary = true
+                    onClick = onToggleService, modifier = Modifier.weight(1.3f), isPrimary = true
                 )
                 GlassButton(text = "AOD Clock", onClick = onLaunchAod, modifier = Modifier.weight(1f))
             }
@@ -321,7 +369,7 @@ fun DeepWorkCadenceCard() {
     val deepWorkState by GuardService.liveDeepWork.collectAsState()
 
     GlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(18.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -348,17 +396,19 @@ fun DeepWorkCadenceCard() {
             Spacer(modifier = Modifier.height(12.dp))
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                GlassButton("Simulate Coding Focus", onClick = { GuardService.simulateDeepWork(true, 92, 140f) }, modifier = Modifier.weight(1f))
-                GlassButton("Simulate Idle Desk", onClick = { GuardService.simulateDeepWork(false, 15, 0f) }, modifier = Modifier.weight(1f))
+                GlassButton("Simulate Focus", onClick = { GuardService.simulateDeepWork(true, 92, 140f) }, modifier = Modifier.weight(1f))
+                GlassButton("Simulate Idle", onClick = { GuardService.simulateDeepWork(false, 15, 0f) }, modifier = Modifier.weight(1f))
             }
         }
     }
 }
 
 @Composable
-fun SensorTelemetryCard(sensors: FaceDownSensors, isRunning: Boolean) {
+fun SensorTelemetryCard(isRunning: Boolean) {
+    val sensors by GuardService.liveSensors.collectAsState()
+
     GlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(18.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -439,7 +489,7 @@ fun PerimeterRadarCard() {
     var showViewfinder by remember { mutableStateOf(false) }
 
     GlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(18.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -509,7 +559,7 @@ fun HapticFeedbackCard(context: Context) {
     val feedbackManager = remember { com.auradesk.guard.utils.FeedbackManager(context) }
 
     GlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(18.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
             Text("Subconscious Haptic Patterns", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = GlassColors.TextPrimary)
             Text("Silent vibration cues based on proximity distance", fontSize = 12.sp, color = GlassColors.TextSecondary)
 
@@ -543,7 +593,7 @@ fun VoiceCaptureSynthesizerCard(context: Context) {
     val synthesizedTask  by GuardService.liveSynthesizedTask.collectAsState()
 
     GlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(18.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -594,9 +644,9 @@ fun VoiceCaptureSynthesizerCard(context: Context) {
             Spacer(modifier = Modifier.height(14.dp))
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                GlassButton("Record 10s Capsule", onClick = { GuardService.startAudioCapsule(context, 10) },
+                GlassButton("Record 10s", onClick = { GuardService.startAudioCapsule(context, 10) },
                     modifier = Modifier.weight(1f), isPrimary = true)
-                GlassButton("Simulate Rahul Speech", onClick = {
+                GlassButton("Simulate Rahul", onClick = {
                     GuardService.simulateSpeechCapsule(
                         context = context, speakerName = "Rahul from Backend",
                         speechText = "Hey Arjun, can you review PR 142 API schema changes before the 4 PM deployment?",
@@ -615,7 +665,7 @@ fun InterruptionHistoryCard(context: Context) {
     val coroutineScope = rememberCoroutineScope()
 
     GlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(18.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -664,7 +714,7 @@ fun InterruptionHistoryCard(context: Context) {
                                     if (capsule.aiDeadline.isNotBlank()) {
                                         Spacer(modifier = Modifier.height(2.dp))
                                         Text(
-                                            text = "⏰ ${capsule.aiDeadline}",
+                                            text = "Due: ${capsule.aiDeadline}",
                                             fontSize = 11.sp, color = GlassColors.AccentAmber, fontWeight = FontWeight.SemiBold
                                         )
                                     }
@@ -674,7 +724,7 @@ fun InterruptionHistoryCard(context: Context) {
                                     modifier = Modifier.size(28.dp)
                                 ) {
                                     Icon(Icons.Default.DeleteOutline, contentDescription = "Delete",
-                                        tint = GlassColors.AccentRed, modifier = Modifier.size(18.dp))
+                                        tint = GlassColors.IconColor, modifier = Modifier.size(18.dp))
                                 }
                             }
                         }
@@ -705,35 +755,6 @@ fun InterruptionHistoryCard(context: Context) {
                     coroutineScope.launch { repository.deleteAll() }
                 }, modifier = Modifier.weight(1f), tintColor = GlassColors.GlassRed, textColor = GlassColors.AccentRed)
             }
-        }
-    }
-}
-
-@Composable
-fun VivoNotesSyncCard(context: Context) {
-    val joviManager = remember { GuardService.getJoviNotesSyncManager(context) }
-    val syncState by joviManager.syncState.collectAsState()
-
-    GlassCard(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.padding(18.dp).fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-                Text("Vivo Office Kit & Notes", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = GlassColors.TextPrimary)
-                Text("Direct Markdown task handoff into Vivo Notes", fontSize = 12.sp, color = GlassColors.TextSecondary)
-            }
-            Switch(
-                checked = syncState.isAutoSyncEnabled,
-                onCheckedChange = { joviManager.setAutoSyncEnabled(it) },
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor  = Color.White,
-                    checkedTrackColor  = GlassColors.TextPrimary.copy(alpha = 0.8f),
-                    uncheckedThumbColor = GlassColors.TextMuted,
-                    uncheckedTrackColor = Color(0x44000000)
-                )
-            )
         }
     }
 }
@@ -822,7 +843,7 @@ fun OnDeviceLlamaCard(context: Context) {
     }
 
     GlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(18.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -834,13 +855,16 @@ fun OnDeviceLlamaCard(context: Context) {
                 }
                 when (val st = llamaState) {
                     is com.auradesk.guard.llm.LlamaState.Ready -> {
-                        GlassBadge("INT4 Ready", tintColor = GlassColors.GlassGreen, textColor = GlassColors.AccentGreen)
+                        GlassBadge("INT4 in RAM", tintColor = GlassColors.GlassGreen, textColor = GlassColors.AccentGreen)
+                    }
+                    is com.auradesk.guard.llm.LlamaState.Unloaded -> {
+                        GlassBadge("Unloaded (Disk)", tintColor = GlassColors.GlassBlue, textColor = GlassColors.AccentBlue)
                     }
                     is com.auradesk.guard.llm.LlamaState.Downloading -> {
                         GlassBadge("${st.progressPercent}%", tintColor = GlassColors.GlassBlue, textColor = GlassColors.AccentBlue)
                     }
                     is com.auradesk.guard.llm.LlamaState.Loading -> {
-                        GlassBadge("Loading...", tintColor = GlassColors.GlassAmber, textColor = GlassColors.AccentAmber)
+                        GlassBadge("Mounting...", tintColor = GlassColors.GlassAmber, textColor = GlassColors.AccentAmber)
                     }
                     is com.auradesk.guard.llm.LlamaState.NotDownloaded -> {
                         GlassBadge("352 MB Needed", tintColor = GlassColors.GlassAmber, textColor = GlassColors.AccentAmber)
@@ -857,20 +881,52 @@ fun OnDeviceLlamaCard(context: Context) {
             when (val st = llamaState) {
                 is com.auradesk.guard.llm.LlamaState.Ready -> {
                     Text(
-                        text = "Native ARM NEON kernels loaded in RAM. Generates context-aware replies in ~1.1s under airplane mode zero-bytes.",
+                        text = "Native ARM NEON kernels resident in RAM. Generates context-aware replies in ~1.1s under airplane mode zero-bytes.",
                         fontSize = 12.sp, color = GlassColors.TextSecondary
                     )
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         GlassButton(
                             text = "Test LLM Auto-Reply",
                             onClick = { showTestDialog = true },
+                            modifier = Modifier.weight(1.3f),
+                            isPrimary = true
+                        )
+                        GlassButton(
+                            text = "Eject from RAM",
+                            onClick = { llamaRunner.unloadModel() },
                             modifier = Modifier.weight(1f),
+                            tintColor = GlassColors.GlassRed,
+                            textColor = GlassColors.AccentRed
+                        )
+                    }
+                    if (!isNotifAccessGranted) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        GlassButton(
+                            text = "Grant Notification Access",
+                            onClick = {
+                                context.startActivity(android.content.Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"))
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+                is com.auradesk.guard.llm.LlamaState.Unloaded -> {
+                    Text(
+                        text = "Qwen2-0.5B-Instruct INT4 is verified on disk (~352MB). Model is unloaded from RAM to save battery. Load into memory to test or arm focus mode.",
+                        fontSize = 12.sp, color = GlassColors.TextSecondary
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        GlassButton(
+                            text = "Mount / Load into RAM",
+                            onClick = { coroutineScope.launch { llamaRunner.loadModel() } },
+                            modifier = Modifier.weight(1.2f),
                             isPrimary = true
                         )
                         if (!isNotifAccessGranted) {
                             GlassButton(
-                                text = "Grant Notif Access",
+                                text = "Notif Access",
                                 onClick = {
                                     context.startActivity(android.content.Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"))
                                 },
@@ -886,14 +942,14 @@ fun OnDeviceLlamaCard(context: Context) {
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     LinearProgressIndicator(
-                        progress = st.progressPercent / 100f,
+                        progress = { st.progressPercent / 100f },
                         modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
                         color = GlassColors.AccentBlue,
                         trackColor = Color(0x22000000)
                     )
                 }
                 is com.auradesk.guard.llm.LlamaState.Loading -> {
-                    Text("Memory-mapping INT4 tensor weights into RAM...", fontSize = 12.sp, color = GlassColors.TextSecondary)
+                    Text("Memory-mapping INT4 tensor weights into RAM (~1.1s)...", fontSize = 12.sp, color = GlassColors.TextSecondary)
                 }
                 is com.auradesk.guard.llm.LlamaState.NotDownloaded -> {
                     Text(
@@ -912,8 +968,8 @@ fun OnDeviceLlamaCard(context: Context) {
                     Text("Model status: ${st.message}", fontSize = 12.sp, color = GlassColors.AccentRed)
                     Spacer(modifier = Modifier.height(8.dp))
                     GlassButton(
-                        text = "Retry Download",
-                        onClick = { llamaRunner.downloadModel() },
+                        text = "Retry",
+                        onClick = { llamaRunner.checkModelStatus() },
                         modifier = Modifier.fillMaxWidth()
                     )
                 }

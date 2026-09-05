@@ -13,17 +13,36 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
     
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    
     <!-- Foreground Service Permissions (Android 14+) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
-    <!-- Package Visibility for On-Device Speech Recognition (Android 11+) -->
+    <!-- Package Visibility for On-Device Speech Recognition & Vivo Office Kit (Android 11+) -->
     <queries>
         <intent>
             <action android:name="android.speech.RecognitionService" />
         </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="es" />
+        </intent>
+        <intent>
+            <action android:name="vivo.intent.action.EASYSHARE_MIRRORING" />
+        </intent>
+        <intent>
+            <action android:name="com.vivo.officekit.SCREEN_MIRROR_BANNER" />
+        </intent>
+        <package android:name="com.vivo.notes" />
+        <package android:name="com.vivo.easyshare" />
+        <package android:name="com.vivo.pcsuite" />
+        <package android:name="com.yozo.vivo.office" />
+        <package android:name="com.vivo.smartoffice" />
+        <package android:name="com.vivo.share" />
     </queries>
 
     <application
@@ -70,6 +89,16 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+        <!-- Phase 8: FileProvider for Vivo EasyShare and Jovi Notes attachment sharing -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
     </application>
 

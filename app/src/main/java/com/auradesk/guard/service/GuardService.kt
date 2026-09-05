@@ -377,6 +377,13 @@ class GuardService : LifecycleService() {
 
         faceDownDetector.startListening()
 
+        // Phase 8: Automatically initiate Vivo Screen Mirroring & Office Kit on Guard Start
+        val prefs = getSharedPreferences("auradesk_prefs", Context.MODE_PRIVATE)
+        val userName = prefs.getString("user_name", "")?.trim() ?: "Arjun"
+        val llamaRunner = com.auradesk.guard.llm.LlamaModelRunner.getInstance(this@GuardService)
+        val returnTime = llamaRunner.calculateReturnTime(45)
+        com.auradesk.guard.vivo.VivoOfficeKitManager.getInstance(this@GuardService).onFocusSessionStarted(userName, returnTime, autoLaunchMirroring = true)
+
         sensorCollectJob?.cancel()
         sensorCollectJob = serviceScope.launch {
             faceDownDetector.sensorState.collect { sensors ->
@@ -590,6 +597,25 @@ class GuardService : LifecycleService() {
                         if (ContextCompat.checkSelfPermission(this@GuardService, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
                             cameraRadarManager.startCamera(this@GuardService)
                         }
+                        // Phase 7: Automatically load on-device LLM into RAM on focus arm
+                        val llamaRunner = com.auradesk.guard.llm.LlamaModelRunner.getInstance(this@GuardService)
+                        if (llamaRunner.isModelDownloaded()) {
+                            if (!llamaRunner.isModelLoaded()) {
+                                Log.i(TAG, "🦙 Arming focus shield: Loading LLM model into RAM...")
+                                serviceScope.launch {
+                                    llamaRunner.loadModel()
+                                }
+                            } else {
+                                Log.i(TAG, "🦙 Arming focus shield: LLM model already resident in RAM.")
+                            }
+                        }
+
+                        // Phase 8: Vivo Office Kit Screen Mirroring Banner + Laptop Mute
+                        val prefs = getSharedPreferences("auradesk_prefs", Context.MODE_PRIVATE)
+                        val userName = prefs.getString("user_name", "")?.trim() ?: "Arjun"
+                        val returnTime = llamaRunner.calculateReturnTime(45)
+                        com.auradesk.guard.vivo.VivoOfficeKitManager.getInstance(this@GuardService).onFocusSessionStarted(userName, returnTime)
+
                         // Phase 5: Cleanly auto-expire any old notes (> 1 hr) upon fresh session arm
                         serviceScope.launch(Dispatchers.IO) {
                             try {
@@ -611,6 +637,16 @@ class GuardService : LifecycleService() {
                         lastZoneVibrated = com.auradesk.guard.vision.RadarZone.NONE
                         closestZoneInVisit = com.auradesk.guard.vision.RadarZone.NONE
                         com.auradesk.guard.notifications.FocusNotificationListenerService.clearCooldowns()
+
+                        // Phase 7: Automatically eject LLM model from RAM upon disarm
+                        val llamaRunner = com.auradesk.guard.llm.LlamaModelRunner.getInstance(this@GuardService)
+                        if (llamaRunner.isModelLoaded()) {
+                            Log.i(TAG, "🦙 Disarmed focus shield: Ejecting LLM model from RAM...")
+                            llamaRunner.unloadModel()
+                        }
+
+                        // Phase 8: Dismiss Screen Mirror Banner + Unmute Laptop
+                        com.auradesk.guard.vivo.VivoOfficeKitManager.getInstance(this@GuardService).onFocusSessionEnded()
                     }
                     lastArmedState = faceDown
                 }
@@ -633,6 +669,11 @@ class GuardService : LifecycleService() {
         cameraRadarManager.stopCamera()
         deepWorkDetectorInstance = null
         audioCapsuleManagerInstance = null
+        com.auradesk.guard.vivo.VivoOfficeKitManager.getInstance(this).onFocusSessionEnded()
+        val llamaRunner = com.auradesk.guard.llm.LlamaModelRunner.getInstance(this)
+        if (llamaRunner.isModelLoaded()) {
+            llamaRunner.unloadModel()
+        }
         visitStartTime = 0L
         absentSinceTime = 0L
         hasCapturedCapsuleInCurrentVisit = false

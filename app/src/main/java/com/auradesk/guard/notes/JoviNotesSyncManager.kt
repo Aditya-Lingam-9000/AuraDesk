@@ -8,6 +8,9 @@ import android.net.Uri
 import android.util.Log
 import android.widget.Toast
 import com.auradesk.guard.data.InterruptionEntity
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -88,62 +91,13 @@ class JoviNotesSyncManager(private val context: Context) {
      * Sync task to Vivo Notes or system share target
      */
     fun syncInterruptionToNotes(capsule: InterruptionEntity, launchChooser: Boolean = false): Boolean {
-        val formattedContent = formatMarkdownNote(capsule)
+        val vivoManager = com.auradesk.guard.vivo.VivoOfficeKitManager.getInstance(context)
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            vivoManager.syncInterruptionToJoviNotes(capsule, launchChooser)
+        }
+
+        // Update local sync state
         val noteTitle = if (capsule.aiActionItem.isNotBlank()) capsule.aiActionItem else capsule.taskSummary
-
-        Log.i(TAG, "📝 Syncing task #${capsule.id} to Vivo Notes / Office Kit: '$noteTitle'")
-
-        // 1. Always copy formatted markdown to clipboard for instant pasting anywhere
-        try {
-            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            val clip = ClipData.newPlainText("AuraDesk Task", formattedContent)
-            clipboard.setPrimaryClip(clip)
-        } catch (e: Exception) {
-            Log.w(TAG, "Clipboard copy exception: ${e.message}")
-        }
-
-        // 2. Try direct Vivo Notes Intent
-        var dispatched = false
-        try {
-            val vivoIntent = Intent(Intent.ACTION_SEND).apply {
-                type = "text/plain"
-                putExtra(Intent.EXTRA_SUBJECT, noteTitle)
-                putExtra(Intent.EXTRA_TEXT, formattedContent)
-                setPackage(VIVO_NOTES_PACKAGE)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-
-            if (context.packageManager.resolveActivity(vivoIntent, 0) != null) {
-                if (launchChooser) {
-                    context.startActivity(vivoIntent)
-                }
-                dispatched = true
-                Log.i(TAG, "✅ Dispatched directly to Vivo Notes (com.vivo.notes)")
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Vivo Notes direct intent failed: ${e.message}")
-        }
-
-        // 3. Adaptive Fallback: General Share / Notes Chooser if explicitly tapped
-        if (!dispatched && launchChooser) {
-            try {
-                val sendIntent = Intent(Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    putExtra(Intent.EXTRA_SUBJECT, "AuraDesk Task: $noteTitle")
-                    putExtra(Intent.EXTRA_TEXT, formattedContent)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                val chooserIntent = Intent.createChooser(sendIntent, "Save Task to Notes / Jovi Office").apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                context.startActivity(chooserIntent)
-                dispatched = true
-            } catch (e: Exception) {
-                Log.e(TAG, "Chooser intent failed", e)
-            }
-        }
-
-        // Update sync state
         _syncState.value = _syncState.value.copy(
             lastSyncedTaskId = capsule.id,
             lastSyncedTitle = noteTitle,

@@ -21,6 +21,9 @@ class PersonRadarDetector {
         private const val DETECTION_PERSISTENCE_MS = 2500L // 2.5s persistence hold to prevent flicker
         private const val APPROACH_ON_THRESHOLD = 0.20f // Sustained +20%/s expansion turns ON approaching
         private const val APPROACH_OFF_THRESHOLD = 0.05f // <= +5%/s turns OFF approaching (Hysteresis)
+
+        @Volatile
+        var isPausedForLlm: Boolean = false
     }
 
     private val _radarData = MutableStateFlow(PersonRadarData())
@@ -53,7 +56,7 @@ class PersonRadarDetector {
     @OptIn(ExperimentalGetImage::class)
     fun processImageProxy(imageProxy: ImageProxy) {
         val mediaImage = imageProxy.image
-        if (mediaImage == null || isProcessing) {
+        if (mediaImage == null || isProcessing || isPausedForLlm) {
             imageProxy.close()
             return
         }

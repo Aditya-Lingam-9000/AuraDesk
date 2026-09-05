@@ -6,8 +6,8 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -78,8 +78,6 @@ fun OnboardingScreen(onFinish: () -> Unit) {
         )
     }
 
-    val currentStep = steps[currentStepIndex]
-
     val permissionsToRequest = remember {
         buildList {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -128,172 +126,195 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                     fontSize = 14.sp, fontWeight = FontWeight.Bold,
                     color = GlassColors.TextPrimary, letterSpacing = 1.5.sp
                 )
-                GlassBadge(text = currentStep.badgeLabel)
+                GlassBadge(text = steps[currentStepIndex].badgeLabel)
             }
 
-            // Central Showcase
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(vertical = 16.dp)
-            ) {
-                // Animated icon in glass circle
-                GlassCard(
-                    modifier = Modifier.size(100.dp),
-                    cornerRadius = 50.dp
-                ) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = currentStep.icon,
-                            contentDescription = null,
-                            tint = GlassColors.TextPrimary,
-                            modifier = Modifier.size(44.dp)
+            // Central Showcase with smooth spring AnimatedContent
+            AnimatedContent(
+                targetState = currentStepIndex,
+                transitionSpec = {
+                    val forward = targetState > initialState
+                    (slideInHorizontally(
+                        animationSpec = spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow),
+                        initialOffsetX = { if (forward) it / 3 else -it / 3 }
+                    ) + fadeIn(
+                        animationSpec = tween(220, easing = LinearOutSlowInEasing)
+                    )).togetherWith(
+                        slideOutHorizontally(
+                            animationSpec = spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow),
+                            targetOffsetX = { if (forward) -it / 3 else it / 3 }
+                        ) + fadeOut(
+                            animationSpec = tween(180, easing = FastOutLinearInEasing)
                         )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(28.dp))
-
-                Text(
-                    text = currentStep.subtitle,
-                    fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                    color = GlassColors.TextMuted, letterSpacing = 1.2.sp
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = currentStep.title,
-                    fontSize = 22.sp, fontWeight = FontWeight.Bold,
-                    color = GlassColors.TextPrimary, textAlign = TextAlign.Center
-                )
-                Spacer(modifier = Modifier.height(14.dp))
-                Text(
-                    text = currentStep.description,
-                    fontSize = 14.sp, color = GlassColors.TextSecondary,
-                    textAlign = TextAlign.Center, lineHeight = 22.sp,
-                    modifier = Modifier.padding(horizontal = 8.dp)
-                )
-
-                // Permissions Card on Final Step
-                if (currentStepIndex == 2) {
-                    Spacer(modifier = Modifier.height(24.dp))
+                    )
+                },
+                label = "onboardingStepTransition",
+                modifier = Modifier.weight(1f, fill = false)
+            ) { stepIdx ->
+                val step = steps[stepIdx]
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(vertical = 16.dp)
+                ) {
+                    // Animated icon in glass circle
                     GlassCard(
-                        modifier = Modifier.fillMaxWidth(),
-                        tintColor = if (permissionsGranted) GlassColors.GlassGreen.copy(alpha = 0.4f)
-                                    else GlassColors.GlassAmber.copy(alpha = 0.4f)
+                        modifier = Modifier.size(100.dp),
+                        cornerRadius = 50.dp
                     ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Default.Security,
-                                        contentDescription = null,
-                                        tint = GlassColors.TextSecondary,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Hardware Permissions", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = GlassColors.TextPrimary)
-                                }
-                                GlassBadge(
-                                    text = if (permissionsGranted) "Granted" else "Required",
-                                    tintColor = if (permissionsGranted) GlassColors.GlassGreen else GlassColors.GlassAmber,
-                                    textColor = if (permissionsGranted) GlassColors.AccentGreen else GlassColors.AccentAmber
-                                )
-                            }
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = step.icon,
+                                contentDescription = null,
+                                tint = GlassColors.IconColor,
+                                modifier = Modifier.size(44.dp)
+                            )
+                        }
+                    }
 
-                            if (!permissionsGranted) {
-                                Spacer(modifier = Modifier.height(12.dp))
-                                GlassButton(
-                                    text = "Grant Camera & Mic Access",
-                                    onClick = { permissionLauncher.launch(permissionsToRequest.toTypedArray()) },
+                    Spacer(modifier = Modifier.height(28.dp))
+
+                    Text(
+                        text = step.subtitle,
+                        fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                        color = GlassColors.TextMuted, letterSpacing = 1.2.sp
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = step.title,
+                        fontSize = 22.sp, fontWeight = FontWeight.Bold,
+                        color = GlassColors.TextPrimary, textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Text(
+                        text = step.description,
+                        fontSize = 14.sp, color = GlassColors.TextSecondary,
+                        textAlign = TextAlign.Center, lineHeight = 22.sp,
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    )
+
+                    // Permissions Card on Final Step
+                    if (stepIdx == 2) {
+                        Spacer(modifier = Modifier.height(24.dp))
+                        GlassCard(
+                            modifier = Modifier.fillMaxWidth(),
+                            tintColor = if (permissionsGranted) GlassColors.GlassGreen.copy(alpha = 0.4f)
+                                        else GlassColors.GlassAmber.copy(alpha = 0.4f)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    isPrimary = true
-                                )
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.Security,
+                                            contentDescription = null,
+                                            tint = GlassColors.IconColor,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Hardware Permissions", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = GlassColors.TextPrimary)
+                                    }
+                                    GlassBadge(
+                                        text = if (permissionsGranted) "Granted" else "Required",
+                                        tintColor = if (permissionsGranted) GlassColors.GlassGreen else GlassColors.GlassAmber,
+                                        textColor = if (permissionsGranted) GlassColors.AccentGreen else GlassColors.AccentAmber
+                                    )
+                                }
+
+                                if (!permissionsGranted) {
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    GlassButton(
+                                        text = "Grant Camera & Mic Access",
+                                        onClick = { permissionLauncher.launch(permissionsToRequest.toTypedArray()) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        isPrimary = true
+                                    )
+                                }
                             }
                         }
                     }
-                }
 
-                // Call-Sign & Voice Calibration on Step 3
-                if (currentStepIndex == 3) {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    GlassCard(
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text(
-                                text = "Your Name / Call-Sign",
-                                fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                                color = GlassColors.TextSecondary
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            OutlinedTextField(
-                                value = userNameInput,
-                                onValueChange = { userNameInput = it },
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth(),
-                                placeholder = { Text("e.g. Arjun") },
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = GlassColors.AccentGreen,
-                                    unfocusedBorderColor = Color(0x33000000)
+                    // Call-Sign & Voice Calibration on Step 3
+                    if (stepIdx == 3) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        GlassCard(
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(
+                                    text = "Your Name / Call-Sign",
+                                    fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                                    color = GlassColors.TextSecondary
                                 )
-                            )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                OutlinedTextField(
+                                    value = userNameInput,
+                                    onValueChange = { userNameInput = it },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    placeholder = { Text("e.g. Arjun") },
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = GlassColors.AccentGreen,
+                                        unfocusedBorderColor = Color(0x33000000)
+                                    )
+                                )
 
-                            Spacer(modifier = Modifier.height(14.dp))
-                            Text(
-                                text = "3-Sample Voice Calibration",
-                                fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                                color = GlassColors.TextSecondary
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
+                                Spacer(modifier = Modifier.height(14.dp))
+                                Text(
+                                    text = "3-Sample Voice Calibration",
+                                    fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                                    color = GlassColors.TextSecondary
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
 
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                for (sampleIdx in 1..3) {
-                                    val isCalibrated = voiceSamplesRecorded >= sampleIdx
-                                    GlassCard(
-                                        modifier = Modifier.weight(1f),
-                                        tintColor = if (isCalibrated) GlassColors.GlassGreen else Color(0x15000000)
-                                    ) {
-                                        Column(
-                                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
-                                            horizontalAlignment = Alignment.CenterHorizontally
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    for (sampleIdx in 1..3) {
+                                        val isCalibrated = voiceSamplesRecorded >= sampleIdx
+                                        GlassCard(
+                                            modifier = Modifier.weight(1f),
+                                            tintColor = if (isCalibrated) GlassColors.GlassGreen else Color(0x15000000)
                                         ) {
-                                            Icon(
-                                                imageVector = if (isCalibrated) Icons.Default.CheckCircle else Icons.Default.Mic,
-                                                contentDescription = null,
-                                                tint = if (isCalibrated) GlassColors.AccentGreen else GlassColors.TextMuted,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                            Spacer(modifier = Modifier.height(2.dp))
-                                            Text(
-                                                text = "Sample $sampleIdx",
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Medium,
-                                                color = if (isCalibrated) GlassColors.AccentGreen else GlassColors.TextMuted
-                                            )
+                                            Column(
+                                                modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally
+                                            ) {
+                                                Icon(
+                                                    imageVector = if (isCalibrated) Icons.Default.CheckCircle else Icons.Default.Mic,
+                                                    contentDescription = null,
+                                                    tint = if (isCalibrated) GlassColors.AccentGreen else GlassColors.IconColor,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Text(
+                                                    text = "Sample $sampleIdx",
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = if (isCalibrated) GlassColors.AccentGreen else GlassColors.TextMuted
+                                                )
+                                            }
                                         }
                                     }
                                 }
-                            }
 
-                            Spacer(modifier = Modifier.height(12.dp))
-                            GlassButton(
-                                text = if (voiceSamplesRecorded < 3) "Record Voice Sample (${voiceSamplesRecorded + 1}/3)" else "Voice Calibrated ✓",
-                                onClick = {
-                                    if (voiceSamplesRecorded < 3) {
-                                        voiceSamplesRecorded++
-                                    } else {
-                                        voiceSamplesRecorded = 0
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                isPrimary = voiceSamplesRecorded < 3
-                            )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                GlassButton(
+                                    text = if (voiceSamplesRecorded < 3) "Record Voice Sample (${voiceSamplesRecorded + 1}/3)" else "Voice Calibrated",
+                                    onClick = {
+                                        if (voiceSamplesRecorded < 3) {
+                                            voiceSamplesRecorded++
+                                        } else {
+                                            voiceSamplesRecorded = 0
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    isPrimary = voiceSamplesRecorded < 3
+                                )
+                            }
                         }
                     }
                 }

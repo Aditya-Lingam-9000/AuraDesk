@@ -22,12 +22,14 @@ import java.nio.file.StandardCopyOption
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.auradesk.guard.vision.PersonRadarDetector
 
 sealed class LlamaState {
     object NotDownloaded : LlamaState()
     data class Downloading(val progressPercent: Int, val bytesDownloaded: Long, val totalBytes: Long) : LlamaState()
-    object Loading : LlamaState()
-    object Ready : LlamaState()
+    object Unloaded : LlamaState() // Model is on disk (~352MB), but not resident in RAM
+    object Loading : LlamaState()  // Loading / memory-mapping weights into RAM
+    object Ready : LlamaState()    // Resident in RAM and ready for zero-latency inference
     data class Generating(val partialText: String) : LlamaState()
     data class Error(val message: String) : LlamaState()
 }
@@ -61,6 +63,15 @@ class LlamaModelRunner private constructor(private val context: Context) {
 
     init {
         checkModelStatus()
+    }
+
+    fun isModelDownloaded(): Boolean {
+        val file = getModelFile()
+        return file.exists() && file.length() > 100_000_000L
+    }
+
+    fun isModelLoaded(): Boolean {
+        return llamaModel != null && llamaModel?.isLoaded == true
     }
 
     private fun promoteTempFile(tempFile: File, targetFile: File): Boolean {
@@ -123,30 +134,39 @@ class LlamaModelRunner private constructor(private val context: Context) {
     }
 
     fun checkModelStatus() {
-        val extDir = context.getExternalFilesDir("models") ?: context.filesDir
-        val intDir = File(context.filesDir, "models")
-
-        val candidates = listOf(
-            File(extDir, MODEL_FILENAME),
-            File(extDir, "$MODEL_FILENAME.tmp"),
-            File(intDir, MODEL_FILENAME),
-            File(intDir, "$MODEL_FILENAME.tmp")
-        )
-        val readyCandidate = candidates.firstOrNull { it.exists() && it.length() > 100_000_000L }
-
-        if (readyCandidate != null) {
-            Log.i(TAG, "🎯 Found valid model file on device: ${readyCandidate.absolutePath} (${readyCandidate.length() / (1024 * 1024)}MB)")
-            if (llamaModel != null && llamaModel?.isLoaded == true) {
+        if (isModelDownloaded()) {
+            if (isModelLoaded()) {
                 _llamaState.value = LlamaState.Ready
             } else {
-                scope.launch { loadModel() }
+                // Do NOT auto-load into RAM on app start! Keep it unloaded until requested.
+                _llamaState.value = LlamaState.Unloaded
             }
         } else {
             _llamaState.value = LlamaState.NotDownloaded
         }
     }
 
+    fun unloadModel() {
+        try {
+            llamaModel?.close()
+            llamaModel = null
+            if (isModelDownloaded()) {
+                _llamaState.value = LlamaState.Unloaded
+            } else {
+                _llamaState.value = LlamaState.NotDownloaded
+            }
+            Log.i(TAG, "🦙 Ejected Qwen2-0.5B model from RAM.")
+        } catch (e: Exception) {
+            Log.w(TAG, "Error unloading llama model", e)
+        }
+    }
+
     suspend fun loadModel(): Boolean = withContext(Dispatchers.IO) {
+        if (isModelLoaded()) {
+            _llamaState.value = LlamaState.Ready
+            return@withContext true
+        }
+
         val file = getModelFile()
         if (!file.exists() || file.length() < 100_000_000L) {
             _llamaState.value = LlamaState.NotDownloaded
@@ -160,12 +180,13 @@ class LlamaModelRunner private constructor(private val context: Context) {
             llamaModel?.close()
             llamaModel = LlamaModel.load(file.absolutePath) {
                 contextSize = 2048
+                batchSize = 2048
                 threads = 4
                 temperature = 0.25f
-                maxTokens = 80
+                maxTokens = 60
             }
             _llamaState.value = LlamaState.Ready
-            Log.i(TAG, "✅ Qwen2-0.5B-Instruct successfully loaded in memory via llama.cpp NDK!")
+            Log.i(TAG, "✅ Qwen2-0.5B-Instruct successfully loaded in memory via llama.cpp NDK (batchSize=2048)!")
             true
         } catch (e: Exception) {
             Log.e(TAG, "❌ Failed to load Qwen2-0.5B model", e)
@@ -178,13 +199,10 @@ class LlamaModelRunner private constructor(private val context: Context) {
         if (_llamaState.value is LlamaState.Downloading) return
 
         // If a valid model or temp file already exists, don't re-download!
-        val existing = getModelFile()
-        if (existing.exists() && existing.length() > 100_000_000L) {
-            Log.i(TAG, "Model file already exists on disk (${existing.length() / (1024 * 1024)}MB). Loading directly...")
-            scope.launch {
-                val success = loadModel()
-                onComplete(success)
-            }
+        if (isModelDownloaded()) {
+            Log.i(TAG, "Model file already exists on disk. Marking as Unloaded...")
+            _llamaState.value = LlamaState.Unloaded
+            onComplete(true)
             return
         }
 
@@ -233,8 +251,8 @@ class LlamaModelRunner private constructor(private val context: Context) {
                 val fileToLoad = if (targetFile.exists() && targetFile.length() > 100_000_000L) targetFile else tempFile
 
                 if (fileToLoad.exists() && fileToLoad.length() > 100_000_000L) {
-                    Log.i(TAG, "✅ Model download ready at: ${fileToLoad.absolutePath}")
-                    loadModel()
+                    Log.i(TAG, "✅ Model download ready on disk at: ${fileToLoad.absolutePath}. Status set to Unloaded.")
+                    _llamaState.value = LlamaState.Unloaded
                     onComplete(true)
                 } else {
                     _llamaState.value = LlamaState.Error("Downloaded file incomplete")
@@ -250,7 +268,8 @@ class LlamaModelRunner private constructor(private val context: Context) {
 
     /**
      * Phase 7 Prompt A: Auto-Reply System
-     * High-quality few-shot prompt with strict relevance and tone matching.
+     * High-speed, zero-hallucination topic extraction paired with deterministic focus dispatch.
+     * Guarantees context-relevance without chatbot roleplay hallucinations.
      */
     suspend fun generateAutoReply(
         senderName: String,
@@ -259,98 +278,99 @@ class LlamaModelRunner private constructor(private val context: Context) {
         userName: String = ""
     ): String = withContext(Dispatchers.IO) {
         val displayName = if (userName.isNotBlank()) userName.trim() else "the user"
+        val safeMessage = if (messageText.length > 250) messageText.take(250) + "..." else messageText
 
         val model = llamaModel
         if (model != null && model.isLoaded) {
             try {
+                PersonRadarDetector.isPausedForLlm = true
                 val prompt = buildString {
                     append("<|im_start|>system\n")
-                    append("You are AuraDesk, an executive AI focus assistant for $displayName.\n")
-                    append("$displayName is currently locked in a deep work focus session and will return at $returnTime.\n\n")
-                    append("TASK:\n")
-                    append("Generate a single, natural, highly relevant auto-reply to the incoming message.\n\n")
-                    append("STRICT RULES:\n")
-                    append("1. PREFIX: The output MUST start with 'Auto-Reply: ' followed by the message.\n")
-                    append("2. RELEVANCE: Directly reference the specific topic, action, or question in the message (e.g. PR review, bug, meeting, report, greeting, lunch). Never send a generic template.\n")
-                    append("3. RETURN TIME: Explicitly state $displayName will reply right after $returnTime.\n")
-                    append("4. URGENCY: Offer that if it is an urgent blocker, they can call twice.\n")
-                    append("5. IDENTITY: Refer to the focused person as '$displayName'.\n")
-                    append("6. TONE & LANGUAGE: Mirror the sender's exact language, style, and vocabulary (e.g. professional English, casual English, or Hinglish like 'bhai/yaar/hote hi').\n")
-                    append("7. LENGTH: 1 to 2 short sentences (maximum 28 words).\n")
-                    append("8. OUTPUT FORMAT: Output ONLY 'Auto-Reply: <text>'. Do NOT include quotes, conversational filler, or preamble.\n\n")
-                    append("FEW-SHOT EXAMPLES:\n\n")
-                    append("User: Message from Contact: Can you review the payment auth PR before deployment?\n")
-                    append("Assistant: Auto-Reply: $displayName is in deep work till $returnTime and will review your payment auth PR right after. Please call twice if urgent.\n\n")
-                    append("User: Message from Contact: Bhai sham ko chai pine chalte hain kya?\n")
-                    append("Assistant: Auto-Reply: Abhi focus session chal raha hai $returnTime tak. Free hote hi ping karta hoon chai ke liye!\n\n")
-                    append("User: Message from Contact: Need the Q3 infrastructure budget sheet ASAP.\n")
-                    append("Assistant: Auto-Reply: $displayName is in a focus block until $returnTime. The Q3 infrastructure budget sheet will be sent immediately after. Please call if critical.\n\n")
-                    append("User: Message from Contact: Good morning! Let me know when you get a chance to test the new build.\n")
-                    append("Assistant: Auto-Reply: Good morning! $displayName is in focus till $returnTime and will test the new build right after.<|im_end|>\n")
+                    append("Extract the subject or topic of the message as a short phrase (e.g. 'the auth PR', 'your resume', 'the design files'). If general, output 'your message'. Output ONLY the phrase.\n")
+                    append("<|im_end|>\n")
                     append("<|im_start|>user\n")
-                    append("Message from $senderName: $messageText<|im_end|>\n")
+                    append("Alex: Can you review the payment auth PR before deployment?<|im_end|>\n")
                     append("<|im_start|>assistant\n")
-                    append("Auto-Reply: ")
+                    append("the payment auth PR<|im_end|>\n")
+                    append("<|im_start|>user\n")
+                    append("Sarah: Where did you save the design files?<|im_end|>\n")
+                    append("<|im_start|>assistant\n")
+                    append("the design files<|im_end|>\n")
+                    append("<|im_start|>user\n")
+                    append("$senderName: $safeMessage<|im_end|>\n")
+                    append("<|im_start|>assistant\n")
                 }
 
-                Log.i(TAG, "🦙 Generating on-device auto-reply for $senderName with Qwen2-0.5B (displayName='$displayName')...")
+                Log.i(TAG, "🦙 Extracting topic with Qwen2-0.5B for $senderName (displayName='$displayName')...")
                 val startTime = System.currentTimeMillis()
 
-                // Robust blocking generation in native C++ without JNI callback bridge crashes
-                val rawResult = model.generate(prompt)
-
+                val genConfig = LlamaConfig(
+                    contextSize = 2048,
+                    batchSize = 2048,
+                    threads = 4,
+                    temperature = 0.2f,
+                    topP = 0.9f,
+                    repeatPenalty = 1.15f,
+                    maxTokens = 8
+                )
+                val rawResult = model.generate(prompt, genConfig)
                 val latencyMs = System.currentTimeMillis() - startTime
-                var cleanResult = rawResult.trim()
+
+                var topic = rawResult.trim()
                     .replace("<|im_end|>", "")
                     .replace("<|endoftext|>", "")
                     .replace("<|im_start|>", "")
                     .removePrefix("Assistant:")
                     .removePrefix("Reply:")
-                    .removePrefix("AuraDesk:")
-                    .removePrefix("Output:")
-                    .trim()
+                    .removePrefix("Topic:")
+                    .lines().firstOrNull()?.trim() ?: ""
 
-                // Cut off accidental turn repeats
-                if (cleanResult.contains("<|im_start|>")) {
-                    cleanResult = cleanResult.substringBefore("<|im_start|>").trim()
-                }
-                if (cleanResult.contains("User:")) {
-                    cleanResult = cleanResult.substringBefore("User:").trim()
-                }
-                if (cleanResult.contains("\n\n")) {
-                    cleanResult = cleanResult.substringBefore("\n\n").trim()
-                }
+                // Clean punctuation, quotes
+                topic = topic.trim('"', '\'', '.', ',', ':', ';', ' ')
 
-                // Strip surrounding quotes if model added them
-                if (cleanResult.startsWith("\"") && cleanResult.endsWith("\"") && cleanResult.length > 2) {
-                    cleanResult = cleanResult.substring(1, cleanResult.length - 1).trim()
-                }
-                if (cleanResult.startsWith("'") && cleanResult.endsWith("'") && cleanResult.length > 2) {
-                    cleanResult = cleanResult.substring(1, cleanResult.length - 1).trim()
+                // Sanitization filters
+                topic = topic.replace(Regex("^(the\\s+)?(1st|2nd|3rd|first|second|third)\\s+(message|question|test|point|inquiry)[:,]?\\s*", RegexOption.IGNORE_CASE), "").trim()
+                topic = topic.replace(Regex("^regarding\\s+", RegexOption.IGNORE_CASE), "").trim()
+                topic = topic.replace(Regex("^about\\s+", RegexOption.IGNORE_CASE), "").trim()
+
+                // If empty or hallucinatory, default to "your message"
+                if (topic.isBlank() || topic.length > 50 || topic.contains("assistant", ignoreCase = true) || topic.contains("llama", ignoreCase = true) || topic.contains("review", ignoreCase = true) && topic.contains("found no", ignoreCase = true)) {
+                    topic = "your message"
                 }
 
-                // Ensure the output cleanly starts with "Auto-Reply: "
-                val finalReply = if (cleanResult.startsWith("Auto-Reply:", ignoreCase = true)) {
-                    "Auto-Reply: " + cleanResult.substring("Auto-Reply:".length).trim()
-                } else {
-                    "Auto-Reply: $cleanResult"
-                }
+                val finalReply = "Auto-Reply: Regarding $topic, $displayName is in focus until $returnTime and will reply right after. Please call twice if urgent."
 
-                Log.i(TAG, "⚡ Qwen2-0.5B generated high-quality reply in ${latencyMs}ms: '$finalReply'")
-
-                if (finalReply.isNotBlank()) {
-                    _lastGeneratedReply.value = finalReply
-                    return@withContext finalReply
-                }
+                Log.i(TAG, "⚡ Qwen2-0.5B extracted topic '$topic' in ${latencyMs}ms => '$finalReply'")
+                _lastGeneratedReply.value = finalReply
+                return@withContext finalReply
             } catch (e: Throwable) {
                 Log.e(TAG, "Llama generation error: ${e.message}", e)
+            } finally {
+                PersonRadarDetector.isPausedForLlm = false
             }
         }
 
         // Guaranteed fallback if model is still downloading or unloading
-        val fallbackReply = "Auto-Reply: $displayName is in a deep work focus session till $returnTime and will get back to you right after. Please call twice if urgent."
+        val fallbackReply = "Auto-Reply: Regarding your message, $displayName is in a deep work focus session till $returnTime and will get back to you right after. Please call twice if urgent."
         _lastGeneratedReply.value = fallbackReply
         fallbackReply
+    }
+
+    suspend fun generateRaw(prompt: String, maxTokens: Int = 60, temperature: Float = 0.3f): String = withContext(Dispatchers.IO) {
+        val model = llamaModel
+        if (model != null && model.isLoaded) {
+            val config = LlamaConfig(
+                contextSize = 2048,
+                batchSize = 2048,
+                threads = 4,
+                temperature = temperature,
+                topP = 0.9f,
+                repeatPenalty = 1.15f,
+                maxTokens = maxTokens
+            )
+            return@withContext model.generate(prompt, config)
+        }
+        "Model not loaded"
     }
 
     /**
@@ -383,7 +403,15 @@ class LlamaModelRunner private constructor(private val context: Context) {
                     append("<|im_start|>assistant\n")
                 }
 
-                val rawResult = model.generate(prompt)
+                val summaryConfig = LlamaConfig(
+                    contextSize = 2048,
+                    batchSize = 2048,
+                    threads = 4,
+                    temperature = 0.2f,
+                    topP = 0.9f,
+                    maxTokens = 40
+                )
+                val rawResult = model.generate(prompt, summaryConfig)
                 var clean = rawResult.trim()
                     .replace("<|im_end|>", "")
                     .replace("<|endoftext|>", "")

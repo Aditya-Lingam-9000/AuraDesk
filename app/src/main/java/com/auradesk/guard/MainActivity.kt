@@ -37,6 +37,27 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        // Request maximum 120Hz / 144Hz panel refresh rate
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            try {
+                val display = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                    display
+                } else {
+                    @Suppress("DEPRECATION")
+                    windowManager.defaultDisplay
+                }
+                val modes = display?.supportedModes
+                val maxRefreshMode = modes?.maxByOrNull { it.refreshRate }
+                if (maxRefreshMode != null && maxRefreshMode.refreshRate >= 90f) {
+                    val params = window.attributes
+                    params.preferredDisplayModeId = maxRefreshMode.modeId
+                    window.attributes = params
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("MainActivity", "Could not set preferred display mode: ${e.message}")
+            }
+        }
+
         repository = InterruptionRepository.getInstance(this)
         feedbackManager = FeedbackManager(this)
 
